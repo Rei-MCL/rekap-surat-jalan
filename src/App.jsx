@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 // ─────────────────────────────────────────────────────────────
 //  GANTI DENGAN URL APPS SCRIPT ANDA (dari Penerapan baru)
 // ─────────────────────────────────────────────────────────────
-const API_URL = "https://script.google.com/macros/s/AKfycby63rXlJn5rHit0I4VEsZpOPlVnfAmy0be2IqMGEosiEuVvlP9VVdOVnGV3r7sPWy0htg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyG665qHhIqIZL65JpHkxVf8VfZ4TSJ75Pq9zRSuMRP/dev";
 
 const STATUS_CONFIG = {
   Terkirim: { color: "#16a34a", bg: "#dcfce7" },
