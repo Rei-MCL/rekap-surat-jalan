@@ -11,21 +11,29 @@ const STATUS_CONFIG = {
   Selesai:  { color: "#2563eb", bg: "#dbeafe", label: "Selesai" },
 };
 
-const formatTime = (d) =>
-  new Date(d).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-const formatDate = (d) =>
-  new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 const formatStamp = (d) =>
   new Date(d).toLocaleString("id-ID", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
 
-// ── API calls ─────────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────
 async function apiGet(params) {
   const url = API_URL + "?" + new URLSearchParams(params).toString();
   const res = await fetch(url, { redirect: "follow" });
-  return res.json();
+  const text = await res.text();
+  return JSON.parse(text);
+}
+
+async function apiPost(body) {
+  const res = await fetch(API_URL, {
+    method  : "POST",
+    headers : { "Content-Type": "text/plain" },
+    body    : JSON.stringify(body),
+    redirect: "follow",
+  });
+  const text = await res.text();
+  return JSON.parse(text);
 }
 
 // ── Bakar timestamp ke gambar ─────────────────────────────────
@@ -37,7 +45,7 @@ function burnTimestamp(file, driverName, nomorSJ, callback) {
       const canvas  = document.createElement("canvas");
       canvas.width  = img.width;
       canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
+      const ctx     = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
       const now      = new Date();
       const line1    = formatStamp(now);
@@ -59,7 +67,7 @@ function burnTimestamp(file, driverName, nomorSJ, callback) {
       ctx.fillText(line1, boxX + pad, boxY + pad + fontSize);
       ctx.fillStyle = "#facc15";
       ctx.fillText(line2, boxX + pad, boxY + pad + fontSize * 2 + pad * 0.4);
-      callback(canvas.toDataURL("image/jpeg", 0.82), now);
+      callback(canvas.toDataURL("image/jpeg", 0.75), now);
     };
     img.src = e.target.result;
   };
@@ -76,12 +84,14 @@ function PhotoPreview({ src, onRemove }) {
           width: "100%", borderRadius: 10,
           border: "2px solid #cbd5e1", cursor: "zoom-in", display: "block",
         }} />
-        <button onClick={onRemove} style={{
-          position: "absolute", top: 8, right: 8,
-          background: "rgba(0,0,0,0.55)", color: "#fff",
-          border: "none", borderRadius: 20, padding: "4px 10px",
-          fontSize: 12, fontWeight: 700, cursor: "pointer",
-        }}>✕ Hapus</button>
+        {onRemove && (
+          <button onClick={onRemove} style={{
+            position: "absolute", top: 8, right: 8,
+            background: "rgba(0,0,0,0.55)", color: "#fff",
+            border: "none", borderRadius: 20, padding: "4px 10px",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+          }}>✕ Hapus</button>
+        )}
         <div style={{
           position: "absolute", bottom: 8, left: 8,
           background: "rgba(0,0,0,0.5)", color: "#fff",
@@ -126,7 +136,7 @@ function StatusBadge({ status }) {
 
 function KmRow({ km1, km2 }) {
   if (!km1) return null;
-  const jarak = km2 && km2 > km1 ? km2 - km1 : null;
+  const jarak = km2 && Number(km2) > Number(km1) ? Number(km2) - Number(km1) : null;
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
       <span style={{ background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
@@ -167,6 +177,8 @@ function DriverView({ drivers }) {
   const cameraRef  = useRef();
   const galleryRef = useRef();
 
+  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+
   const handleFile = (file) => {
     if (!file) return;
     if (!driver || !nomorSJ) {
@@ -202,16 +214,33 @@ function DriverView({ drivers }) {
     if (Object.keys(errs).length) { setError(errs); return; }
     setLoading(true);
     try {
+      const nomorFormatted = String(parseInt(nomorSJ)).padStart(4, "0");
       const result = await apiGet({
         action    : "addSJ",
         namaDriver: driver,
-        nomorSJ   : String(parseInt(nomorSJ)).padStart(4, "0"),
+        nomorSJ   : nomorFormatted,
         km1       : km1,
         km2       : km2 || "",
       });
+
       if (result.success) {
-        setSuccess({ driver, nomorSJ: String(parseInt(nomorSJ)).padStart(4, "0"), timestamp: result.timestamp, photo });
-        setNomorSJ(""); setKm1(""); setKm2(""); setPhoto(null); setPhotoTime(null); setError({});
+        // Upload foto ke Drive jika ada
+        if (photo && result.id) {
+          try {
+            await apiPost({
+              action      : "uploadPhoto",
+              sjId        : result.id,
+              photoBase64 : photo,
+            });
+          } catch (photoErr) {
+            console.log("Upload foto gagal:", photoErr);
+          }
+        }
+        setSuccess({ driver, nomorSJ: nomorFormatted, timestamp: result.timestamp });
+        setNomorSJ(""); setKm1(""); setKm2("");
+        setPhoto(null); setPhotoTime(null); setError({});
+      } else {
+        setError({ submit: "Gagal menyimpan: " + (result.error || "Error tidak dikenal") });
       }
     } catch (e) {
       setError({ submit: "Koneksi bermasalah. Coba lagi." });
@@ -231,7 +260,7 @@ function DriverView({ drivers }) {
   return (
     <div style={{ padding: 20 }}>
       <div style={{ marginBottom: 20 }}>
-        <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{formatDate(new Date())}</p>
+        <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{today}</p>
         <h2 style={{ margin: "4px 0 0", fontSize: 20, color: "#1B2A4A", fontWeight: 800 }}>Input Surat Jalan</h2>
       </div>
 
@@ -244,11 +273,10 @@ function DriverView({ drivers }) {
           <span style={{ fontSize: 20 }}>✅</span>
           <div>
             <p style={{ margin: 0, fontWeight: 700, color: "#15803d", fontSize: 13 }}>
-              SJ {success.nomorSJ} berhasil disimpan ke database!
+              SJ {success.nomorSJ} berhasil disimpan!
             </p>
             <p style={{ margin: "2px 0 0", color: "#16a34a", fontSize: 12 }}>
               {success.driver} · {success.timestamp}
-              {success.photo ? " · 📷 Foto tersimpan" : ""}
             </p>
           </div>
         </div>
@@ -259,7 +287,7 @@ function DriverView({ drivers }) {
           background: "#fee2e2", border: "1px solid #fca5a5",
           borderRadius: 12, padding: "12px 16px", marginBottom: 16,
           color: "#dc2626", fontSize: 13, fontWeight: 600,
-        }}>{error.submit}</div>
+        }}>⚠️ {error.submit}</div>
       )}
 
       <Field label="Nama Driver" err={error.driver}>
@@ -357,7 +385,7 @@ function DriverView({ drivers }) {
         <div style={{ marginBottom: 18 }}>
           <PhotoPreview src={photo} onRemove={() => { setPhoto(null); setPhotoTime(null); }} />
           <p style={{ color: "#16a34a", fontSize: 11, marginTop: 6, textAlign: "center", fontWeight: 700 }}>
-            ✅ Timestamp: {photoTime ? formatStamp(photoTime) : "-"}
+            ✅ {photoTime ? formatStamp(photoTime) : ""}
           </p>
         </div>
       )}
@@ -369,9 +397,8 @@ function DriverView({ drivers }) {
         fontSize: 15, fontWeight: 800, cursor: loading ? "default" : "pointer",
         letterSpacing: 0.5, boxShadow: "0 4px 12px rgba(27,42,74,0.3)",
       }}>
-        {loading ? "⏳ Menyimpan ke database..." : "Submit SJ"}
+        {loading ? "⏳ Menyimpan..." : "Submit SJ"}
       </button>
-
       <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, marginTop: 12 }}>
         Punya lebih dari 1 SJ? Submit ulang untuk SJ berikutnya.
       </p>
@@ -392,14 +419,24 @@ function AdminView() {
   const [searchQ, setSearchQ]           = useState("");
   const [loading, setLoading]           = useState(false);
   const [saving, setSaving]             = useState(false);
+  const [errorMsg, setErrorMsg]         = useState("");
   const [fullPhoto, setFullPhoto]       = useState(null);
+
+  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
   const loadData = async () => {
     setLoading(true);
+    setErrorMsg("");
     try {
       const result = await apiGet({ action: "getSJList" });
-      if (result.success) setSjList(result.data);
-    } catch (e) {}
+      if (result.success) {
+        setSjList(result.data || []);
+      } else {
+        setErrorMsg("Gagal memuat data: " + (result.error || "Error tidak dikenal"));
+      }
+    } catch (e) {
+      setErrorMsg("Koneksi bermasalah. Pastikan internet aktif lalu ketuk Refresh.");
+    }
     setLoading(false);
   };
 
@@ -407,8 +444,8 @@ function AdminView() {
 
   const filtered = sjList.filter(sj => {
     const matchStatus = filterStatus === "Semua" || sj.status === filterStatus;
-    const matchSearch = sj.nomorSJ.includes(searchQ) ||
-      sj.namaDriver.toLowerCase().includes(searchQ.toLowerCase());
+    const matchSearch = String(sj.nomorSJ).includes(searchQ) ||
+      String(sj.namaDriver).toLowerCase().includes(searchQ.toLowerCase());
     return matchStatus && matchSearch;
   });
 
@@ -444,7 +481,7 @@ function AdminView() {
   return (
     <div style={{ padding: 20 }}>
       <div style={{ marginBottom: 16 }}>
-        <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{formatDate(new Date())}</p>
+        <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{today}</p>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ margin: "4px 0 0", fontSize: 20, color: "#1B2A4A", fontWeight: 800 }}>Monitor Surat Jalan</h2>
           <button onClick={loadData} style={{
@@ -454,11 +491,19 @@ function AdminView() {
         </div>
       </div>
 
+      {errorMsg && (
+        <div style={{
+          background: "#fee2e2", border: "1px solid #fca5a5",
+          borderRadius: 10, padding: "12px 16px", marginBottom: 16,
+          color: "#dc2626", fontSize: 13, fontWeight: 600,
+        }}>⚠️ {errorMsg}</div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
         {[
-          { label: "Total SJ", value: sjList.length,              color: "#1B2A4A", bg: "#f1f5f9" },
-          { label: "Tunda",    value: countByStatus("Tunda"),     color: "#d97706", bg: "#fef3c7" },
-          { label: "Kembali",  value: countByStatus("Kembali"),   color: "#dc2626", bg: "#fee2e2" },
+          { label: "Total SJ", value: sjList.length,            color: "#1B2A4A", bg: "#f1f5f9" },
+          { label: "Tunda",    value: countByStatus("Tunda"),   color: "#d97706", bg: "#fef3c7" },
+          { label: "Kembali",  value: countByStatus("Kembali"), color: "#dc2626", bg: "#fee2e2" },
         ].map(c => (
           <div key={c.label} style={{ background: c.bg, borderRadius: 10, padding: "10px 12px", textAlign: "center" }}>
             <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: c.color }}>{c.value}</p>
@@ -519,9 +564,9 @@ function AdminView() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={saveEdit} disabled={saving} style={{
                     flex: 1, padding: "10px",
-                    background: saving ? "#94a3b8" : "#1B2A4A",
-                    color: "#fff", border: "none", borderRadius: 8,
-                    fontWeight: 700, cursor: saving ? "default" : "pointer", fontSize: 13,
+                    background: saving ? "#94a3b8" : "#1B2A4A", color: "#fff",
+                    border: "none", borderRadius: 8, fontWeight: 700,
+                    cursor: saving ? "default" : "pointer", fontSize: 13,
                   }}>{saving ? "Menyimpan..." : "Simpan"}</button>
                   <button onClick={() => setEditId(null)} style={{
                     flex: 1, padding: "10px", background: "#f1f5f9", color: "#64748b",
@@ -538,16 +583,21 @@ function AdminView() {
                         SJ {sj.nomorSJ}
                       </span>
                       <StatusBadge status={sj.status} />
+                      {sj.photoUrl && (
+                        <span style={{ background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                          📷 Ada foto
+                        </span>
+                      )}
                     </div>
                     <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
                       {sj.namaDriver} · {sj.timestamp}
                     </p>
                     <KmRow km1={sj.km1} km2={sj.km2} />
-                    {sj.keterangan && (
+                    {sj.keterangan ? (
                       <p style={{ margin: "5px 0 0", fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>
                         "{sj.keterangan}"
                       </p>
-                    )}
+                    ) : null}
                   </div>
                   <button onClick={() => openEdit(sj)} style={{
                     padding: "8px 12px", background: "#f1f5f9", border: "none",
@@ -555,6 +605,22 @@ function AdminView() {
                     fontSize: 12, fontWeight: 700, marginLeft: 8, flexShrink: 0,
                   }}>Edit</button>
                 </div>
+                {sj.photoUrl && (
+                  <div style={{ marginTop: 10 }}>
+                    <img
+                      src={sj.photoUrl}
+                      onClick={() => setFullPhoto(sj.photoUrl)}
+                      style={{
+                        width: "100%", maxHeight: 140, objectFit: "cover",
+                        borderRadius: 8, border: "1.5px solid #e2e8f0",
+                        cursor: "zoom-in", display: "block",
+                      }}
+                    />
+                    <p style={{ color: "#94a3b8", fontSize: 10, marginTop: 4, textAlign: "right" }}>
+                      Ketuk untuk perbesar
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -597,7 +663,7 @@ export default function App() {
     <div style={{
       maxWidth: 420, margin: "0 auto", minHeight: "100vh",
       background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif",
-      position: "relative", paddingBottom: 80,
+      paddingBottom: 80,
     }}>
       <div style={{
         background: "linear-gradient(135deg, #1B2A4A 0%, #2d4a7a 100%)",
@@ -611,10 +677,7 @@ export default function App() {
         </div>
       </div>
 
-      {activeTab === "driver"
-        ? <DriverView drivers={drivers} />
-        : <AdminView />
-      }
+      {activeTab === "driver" ? <DriverView drivers={drivers} /> : <AdminView />}
 
       <div style={{
         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
