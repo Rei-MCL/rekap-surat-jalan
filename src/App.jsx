@@ -11,29 +11,30 @@ const STATUS_CONFIG = {
   Selesai:  { color: "#2563eb", bg: "#dbeafe", label: "Selesai" },
 };
 
+// ── Helpers ───────────────────────────────────────────────────
+const toProperCase = (str) =>
+  str ? str.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : str;
+
 const formatStamp = (d) =>
   new Date(d).toLocaleString("id-ID", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
 
-// ── API helpers ───────────────────────────────────────────────
+const toNum = (val) => parseInt(String(val).replace(/[^0-9]/g, ""), 10);
+
 async function apiGet(params) {
   const url = API_URL + "?" + new URLSearchParams(params).toString();
-  const res = await fetch(url, { redirect: "follow" });
-  const text = await res.text();
-  return JSON.parse(text);
+  const res  = await fetch(url, { redirect: "follow" });
+  return JSON.parse(await res.text());
 }
 
 async function apiPost(body) {
   const res = await fetch(API_URL, {
-    method  : "POST",
-    headers : { "Content-Type": "text/plain" },
-    body    : JSON.stringify(body),
-    redirect: "follow",
+    method: "POST", headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify(body), redirect: "follow",
   });
-  const text = await res.text();
-  return JSON.parse(text);
+  return JSON.parse(await res.text());
 }
 
 // ── Bakar timestamp ke gambar ─────────────────────────────────
@@ -43,8 +44,7 @@ function burnTimestamp(file, driverName, nomorSJ, callback) {
     const img = new Image();
     img.onload = () => {
       const canvas  = document.createElement("canvas");
-      canvas.width  = img.width;
-      canvas.height = img.height;
+      canvas.width  = img.width; canvas.height = img.height;
       const ctx     = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0);
       const now      = new Date();
@@ -53,16 +53,11 @@ function burnTimestamp(file, driverName, nomorSJ, callback) {
       const pad      = Math.max(10, img.width * 0.022);
       const fontSize = Math.max(14, Math.floor(img.width * 0.032));
       ctx.font       = `bold ${fontSize}px monospace`;
-      const w1       = ctx.measureText(line1).width;
-      const w2       = ctx.measureText(line2).width;
-      const boxW     = Math.max(w1, w2) + pad * 2;
-      const boxH     = fontSize * 2 + pad * 2.5;
-      const boxX     = img.width  - boxW - pad;
-      const boxY     = img.height - boxH - pad;
-      ctx.fillStyle  = "rgba(0,0,0,0.6)";
-      ctx.beginPath();
-      ctx.roundRect(boxX, boxY, boxW, boxH, 6);
-      ctx.fill();
+      const w1 = ctx.measureText(line1).width, w2 = ctx.measureText(line2).width;
+      const boxW = Math.max(w1, w2) + pad * 2, boxH = fontSize * 2 + pad * 2.5;
+      const boxX = img.width - boxW - pad, boxY = img.height - boxH - pad;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.beginPath(); ctx.roundRect(boxX, boxY, boxW, boxH, 6); ctx.fill();
       ctx.fillStyle = "#ffffff";
       ctx.fillText(line1, boxX + pad, boxY + pad + fontSize);
       ctx.fillStyle = "#facc15";
@@ -74,49 +69,7 @@ function burnTimestamp(file, driverName, nomorSJ, callback) {
   reader.readAsDataURL(file);
 }
 
-// ── Komponen preview foto ─────────────────────────────────────
-function PhotoPreview({ src, onRemove }) {
-  const [full, setFull] = useState(false);
-  return (
-    <>
-      <div style={{ position: "relative", marginTop: 10 }}>
-        <img src={src} onClick={() => setFull(true)} style={{
-          width: "100%", borderRadius: 10,
-          border: "2px solid #cbd5e1", cursor: "zoom-in", display: "block",
-        }} />
-        {onRemove && (
-          <button onClick={onRemove} style={{
-            position: "absolute", top: 8, right: 8,
-            background: "rgba(0,0,0,0.55)", color: "#fff",
-            border: "none", borderRadius: 20, padding: "4px 10px",
-            fontSize: 12, fontWeight: 700, cursor: "pointer",
-          }}>✕ Hapus</button>
-        )}
-        <div style={{
-          position: "absolute", bottom: 8, left: 8,
-          background: "rgba(0,0,0,0.5)", color: "#fff",
-          fontSize: 10, padding: "3px 8px", borderRadius: 6,
-        }}>Ketuk untuk perbesar</div>
-      </div>
-      {full && (
-        <div onClick={() => setFull(false)} style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)",
-          zIndex: 9999, display: "flex", alignItems: "center",
-          justifyContent: "center", padding: 16,
-        }}>
-          <img src={src} style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 8 }} />
-          <button style={{
-            position: "absolute", top: 20, right: 20,
-            background: "rgba(255,255,255,0.15)", color: "#fff",
-            border: "none", borderRadius: 20, padding: "8px 16px",
-            fontSize: 14, fontWeight: 700, cursor: "pointer",
-          }}>✕ Tutup</button>
-        </div>
-      )}
-    </>
-  );
-}
-
+// ── Shared styles ─────────────────────────────────────────────
 const inputStyle = {
   width: "100%", padding: "12px 14px", borderRadius: 10,
   border: "1.5px solid #cbd5e1", fontSize: 15, color: "#1B2A4A",
@@ -124,6 +77,83 @@ const inputStyle = {
   fontFamily: "'Inter', system-ui, sans-serif", outline: "none",
 };
 
+const selectArrow = {
+  appearance: "none",
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+};
+
+// ── Dropdown + isi sendiri ────────────────────────────────────
+function SelectWithCustom({ options, value, onChange, placeholder, hasError }) {
+  const [isCustom, setIsCustom] = useState(false);
+  const [customVal, setCustomVal] = useState("");
+
+  const handleSelect = (e) => {
+    if (e.target.value === "__CUSTOM__") {
+      setIsCustom(true);
+      onChange("");
+    } else {
+      setIsCustom(false);
+      onChange(e.target.value);
+    }
+  };
+
+  const handleCustom = (e) => {
+    const val = e.target.value;
+    setCustomVal(val);
+    onChange(toProperCase(val));
+  };
+
+  const handleCustomBlur = () => {
+    const proper = toProperCase(customVal);
+    setCustomVal(proper);
+    onChange(proper);
+  };
+
+  const selectVal = isCustom ? "__CUSTOM__" : (value || "");
+
+  return (
+    <div>
+      <select
+        value={selectVal}
+        onChange={handleSelect}
+        style={{
+          ...inputStyle, ...selectArrow,
+          color: selectVal ? "#1B2A4A" : "#94a3b8",
+          border: `1.5px solid ${hasError ? "#f87171" : "#cbd5e1"}`,
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        <option value="__CUSTOM__">Lainnya (isi sendiri)...</option>
+      </select>
+
+      {isCustom && (
+        <div style={{ marginTop: 8, position: "relative" }}>
+          <input
+            type="text"
+            value={customVal}
+            onChange={handleCustom}
+            onBlur={handleCustomBlur}
+            placeholder="Ketik nama (huruf besar otomatis)..."
+            style={{ ...inputStyle, fontSize: 14, border: `1.5px solid ${hasError ? "#f87171" : "#3b82f6"}` }}
+            autoFocus
+          />
+          <button
+            onClick={() => { setIsCustom(false); setCustomVal(""); onChange(""); }}
+            style={{
+              position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+              background: "none", border: "none", cursor: "pointer",
+              color: "#94a3b8", fontSize: 16, padding: 4,
+            }}
+          >✕</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Status & KM badge ─────────────────────────────────────────
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG["Terkirim"];
   return (
@@ -159,11 +189,26 @@ function KmRow({ km1, km2 }) {
   );
 }
 
+// ── Field wrapper ─────────────────────────────────────────────
+function Field({ label, children, err, hint }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ fontSize: 13, fontWeight: 700, color: "#374151", display: "block", marginBottom: 6 }}>
+        {label}
+      </label>
+      {children}
+      {hint && !err && <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 5 }}>{hint}</p>}
+      {err  && <p style={{ color: "#dc2626",  fontSize: 12, marginTop: 5 }}>{err}</p>}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════
 // DRIVER VIEW
 // ══════════════════════════════════════════════════════════════
-function DriverView({ drivers }) {
+function DriverView({ drivers, assDrivers }) {
   const [driver, setDriver]         = useState("");
+  const [assDriver, setAssDriver]   = useState("");
   const [nomorSJ, setNomorSJ]       = useState("");
   const [km1, setKm1]               = useState("");
   const [km2, setKm2]               = useState("");
@@ -177,7 +222,9 @@ function DriverView({ drivers }) {
   const cameraRef  = useRef();
   const galleryRef = useRef();
 
-  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  const today = new Date().toLocaleDateString("id-ID", {
+    day: "2-digit", month: "short", year: "numeric"
+  });
 
   const handleFile = (file) => {
     if (!file) return;
@@ -199,12 +246,11 @@ function DriverView({ drivers }) {
     const num = parseInt(nomorSJ);
     if (!nomorSJ || isNaN(num) || num < 1 || num > 9999)
       errs.nomorSJ = "Nomor SJ harus angka 1–9999.";
-    const k1 = parseInt(km1);
+    const k1 = toNum(km1);
     if (!km1 || isNaN(k1) || k1 < 0) errs.km1 = "KM Berangkat wajib diisi.";
     if (km2) {
-      const k2 = parseInt(km2);
-      if (isNaN(k2) || k2 <= parseInt(km1))
-        errs.km2 = "KM Tiba harus lebih besar dari KM Berangkat.";
+      const k2 = toNum(km2);
+      if (isNaN(k2) || k2 <= toNum(km1)) errs.km2 = "KM Tiba harus lebih besar dari KM Berangkat.";
     }
     return errs;
   };
@@ -218,25 +264,20 @@ function DriverView({ drivers }) {
       const result = await apiGet({
         action    : "addSJ",
         namaDriver: driver,
+        assDriver : assDriver || "",
         nomorSJ   : nomorFormatted,
-        km1       : km1,
-        km2       : km2 || "",
+        km1       : toNum(km1),
+        km2       : km2 ? toNum(km2) : "",
       });
-
       if (result.success) {
-        // Upload foto ke Drive jika ada
         if (photo && result.id) {
-          try {
-            await apiPost({
-              action      : "uploadPhoto",
-              sjId        : result.id,
-              photoBase64 : photo,
-            });
-          } catch (photoErr) {
-            console.log("Upload foto gagal:", photoErr);
-          }
+          try { await apiPost({ action: "uploadPhoto", sjId: result.id, photoBase64: photo }); }
+          catch (e) {}
         }
-        setSuccess({ driver, nomorSJ: nomorFormatted, timestamp: result.timestamp });
+        setSuccess({
+          driver, assDriver, nomorSJ: nomorFormatted,
+          formattedSJ: result.formattedSJ, timestamp: result.timestamp,
+        });
         setNomorSJ(""); setKm1(""); setKm2("");
         setPhoto(null); setPhotoTime(null); setError({});
       } else {
@@ -248,20 +289,13 @@ function DriverView({ drivers }) {
     setLoading(false);
   };
 
-  const Field = ({ label, children, err, hint }) => (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ fontSize: 13, fontWeight: 700, color: "#374151", display: "block", marginBottom: 6 }}>{label}</label>
-      {children}
-      {hint && !err && <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 5 }}>{hint}</p>}
-      {err  && <p style={{ color: "#dc2626",  fontSize: 12, marginTop: 5 }}>{err}</p>}
-    </div>
-  );
-
   return (
     <div style={{ padding: 20 }}>
       <div style={{ marginBottom: 20 }}>
         <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>{today}</p>
-        <h2 style={{ margin: "4px 0 0", fontSize: 20, color: "#1B2A4A", fontWeight: 800 }}>Input Surat Jalan</h2>
+        <h2 style={{ margin: "4px 0 0", fontSize: 20, color: "#1B2A4A", fontWeight: 800 }}>
+          Input Surat Jalan
+        </h2>
       </div>
 
       {success && (
@@ -273,10 +307,10 @@ function DriverView({ drivers }) {
           <span style={{ fontSize: 20 }}>✅</span>
           <div>
             <p style={{ margin: 0, fontWeight: 700, color: "#15803d", fontSize: 13 }}>
-              SJ {success.nomorSJ} berhasil disimpan!
+              {success.formattedSJ} berhasil disimpan!
             </p>
             <p style={{ margin: "2px 0 0", color: "#16a34a", fontSize: 12 }}>
-              {success.driver} · {success.timestamp}
+              {success.driver}{success.assDriver ? ` + ${success.assDriver}` : ""} · {success.timestamp}
             </p>
           </div>
         </div>
@@ -290,36 +324,58 @@ function DriverView({ drivers }) {
         }}>⚠️ {error.submit}</div>
       )}
 
+      {/* Nama Driver */}
       <Field label="Nama Driver" err={error.driver}>
-        <select value={driver}
-          onChange={e => { setDriver(e.target.value); setError(p => ({...p, driver:""})); setSuccess(null); }}
-          style={{
-            ...inputStyle, appearance: "none",
-            backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
-            backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-            color: driver ? "#1B2A4A" : "#94a3b8",
-            border: `1.5px solid ${error.driver ? "#f87171" : "#cbd5e1"}`,
-          }}>
-          <option value="">-- Pilih Driver --</option>
-          {drivers.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
+        <SelectWithCustom
+          options={drivers}
+          value={driver}
+          onChange={v => { setDriver(v); setError(p => ({...p, driver:""})); setSuccess(null); }}
+          placeholder="-- Pilih Driver --"
+          hasError={!!error.driver}
+        />
       </Field>
 
+      {/* Ass. Driver */}
+      <Field label="Ass. Driver (opsional)">
+        <SelectWithCustom
+          options={assDrivers}
+          value={assDriver}
+          onChange={v => setAssDriver(v)}
+          placeholder="-- Pilih Ass. Driver --"
+          hasError={false}
+        />
+      </Field>
+
+      {/* Nomor SJ */}
       <Field label="Nomor Surat Jalan" err={error.nomorSJ}>
         <div style={{ position: "relative" }}>
           <span style={{
             position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
             color: "#94a3b8", fontWeight: 700, fontSize: 14, letterSpacing: 1,
+            pointerEvents: "none",
           }}>SJ</span>
-          <input type="number" min={1} max={9999} value={nomorSJ} placeholder="0001"
-            onChange={e => { setNomorSJ(e.target.value); setError(p => ({...p, nomorSJ:""})); setSuccess(null); }}
+          <input
+            type="text" inputMode="numeric" pattern="[0-9]*"
+            value={nomorSJ} placeholder="0001"
+            onChange={e => {
+              const v = e.target.value.replace(/[^0-9]/g, "");
+              setNomorSJ(v);
+              setError(p => ({...p, nomorSJ:""}));
+              setSuccess(null);
+            }}
             style={{
-              ...inputStyle, paddingLeft: 40, fontSize: 22, fontWeight: 800, letterSpacing: 3,
+              ...inputStyle, paddingLeft: 40,
+              fontSize: 22, fontWeight: 800, letterSpacing: 3,
               border: `1.5px solid ${error.nomorSJ ? "#f87171" : "#cbd5e1"}`,
-            }} />
+            }}
+          />
         </div>
+        <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 5 }}>
+          Di spreadsheet tersimpan sebagai: SP/KLK-{new Date().toLocaleDateString("id-ID", {year:"2-digit", month:"2-digit"}).replace("/","")}{String(parseInt(nomorSJ)||0).padStart(4,"0")}
+        </p>
       </Field>
 
+      {/* Divider KM */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0 14px" }}>
         <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
         <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, whiteSpace: "nowrap" }}>📍 DATA KILOMETER</span>
@@ -328,18 +384,33 @@ function DriverView({ drivers }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
         <Field label="KM Berangkat *" err={error.km1}>
-          <input type="number" min={0} value={km1} placeholder="mis. 12500"
-            onChange={e => { setKm1(e.target.value); setError(p => ({...p, km1:""})); }}
-            style={{ ...inputStyle, fontSize: 14, fontWeight: 700, border: `1.5px solid ${error.km1 ? "#f87171" : "#cbd5e1"}` }} />
+          <input
+            type="text" inputMode="numeric" pattern="[0-9]*"
+            value={km1} placeholder="mis. 12500"
+            onChange={e => { setKm1(e.target.value.replace(/[^0-9]/g, "")); setError(p => ({...p, km1:""})); }}
+            style={{
+              ...inputStyle, fontSize: 14, fontWeight: 700,
+              border: `1.5px solid ${error.km1 ? "#f87171" : "#cbd5e1"}`,
+            }}
+          />
         </Field>
         <Field label="KM Tiba (opsional)" err={error.km2}>
-          <input type="number" min={0} value={km2} placeholder="mis. 12650"
-            onChange={e => { setKm2(e.target.value); setError(p => ({...p, km2:""})); }}
-            style={{ ...inputStyle, fontSize: 14, fontWeight: 700, border: `1.5px solid ${error.km2 ? "#f87171" : "#cbd5e1"}` }} />
+          <input
+            type="text" inputMode="numeric" pattern="[0-9]*"
+            value={km2} placeholder="mis. 12650"
+            onChange={e => { setKm2(e.target.value.replace(/[^0-9]/g, "")); setError(p => ({...p, km2:""})); }}
+            style={{
+              ...inputStyle, fontSize: 14, fontWeight: 700,
+              border: `1.5px solid ${error.km2 ? "#f87171" : "#cbd5e1"}`,
+            }}
+          />
         </Field>
       </div>
-      <p style={{ color: "#94a3b8", fontSize: 11, margin: "0 0 18px" }}>KM Tiba bisa dikosongkan dan diisi nanti.</p>
+      <p style={{ color: "#94a3b8", fontSize: 11, margin: "0 0 18px" }}>
+        KM Tiba bisa dikosongkan dan diisi nanti.
+      </p>
 
+      {/* Divider Foto */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0 14px" }}>
         <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
         <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, whiteSpace: "nowrap" }}>📷 FOTO SURAT JALAN</span>
@@ -383,7 +454,18 @@ function DriverView({ drivers }) {
 
       {photo && !processing && (
         <div style={{ marginBottom: 18 }}>
-          <PhotoPreview src={photo} onRemove={() => { setPhoto(null); setPhotoTime(null); }} />
+          <div style={{ position: "relative" }}>
+            <img src={photo} style={{
+              width: "100%", borderRadius: 10,
+              border: "2px solid #cbd5e1", display: "block",
+            }} />
+            <button onClick={() => { setPhoto(null); setPhotoTime(null); }} style={{
+              position: "absolute", top: 8, right: 8,
+              background: "rgba(0,0,0,0.55)", color: "#fff",
+              border: "none", borderRadius: 20, padding: "4px 10px",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}>✕ Hapus</button>
+          </div>
           <p style={{ color: "#16a34a", fontSize: 11, marginTop: 6, textAlign: "center", fontWeight: 700 }}>
             ✅ {photoTime ? formatStamp(photoTime) : ""}
           </p>
@@ -422,20 +504,18 @@ function AdminView() {
   const [errorMsg, setErrorMsg]         = useState("");
   const [fullPhoto, setFullPhoto]       = useState(null);
 
-  const today = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  const today = new Date().toLocaleDateString("id-ID", {
+    day: "2-digit", month: "short", year: "numeric"
+  });
 
   const loadData = async () => {
-    setLoading(true);
-    setErrorMsg("");
+    setLoading(true); setErrorMsg("");
     try {
       const result = await apiGet({ action: "getSJList" });
-      if (result.success) {
-        setSjList(result.data || []);
-      } else {
-        setErrorMsg("Gagal memuat data: " + (result.error || "Error tidak dikenal"));
-      }
+      if (result.success) setSjList(result.data || []);
+      else setErrorMsg("Gagal memuat: " + (result.error || "Error tidak dikenal"));
     } catch (e) {
-      setErrorMsg("Koneksi bermasalah. Pastikan internet aktif lalu ketuk Refresh.");
+      setErrorMsg("Koneksi bermasalah. Ketuk Refresh untuk coba lagi.");
     }
     setLoading(false);
   };
@@ -444,8 +524,9 @@ function AdminView() {
 
   const filtered = sjList.filter(sj => {
     const matchStatus = filterStatus === "Semua" || sj.status === filterStatus;
-    const matchSearch = String(sj.nomorSJ).includes(searchQ) ||
-      String(sj.namaDriver).toLowerCase().includes(searchQ.toLowerCase());
+    const matchSearch = String(sj.nomorSJ || "").toLowerCase().includes(searchQ.toLowerCase()) ||
+      String(sj.namaDriver || "").toLowerCase().includes(searchQ.toLowerCase()) ||
+      String(sj.assDriver  || "").toLowerCase().includes(searchQ.toLowerCase());
     return matchStatus && matchSearch;
   });
 
@@ -458,16 +539,14 @@ function AdminView() {
     setSaving(true);
     try {
       const result = await apiGet({
-        action     : "updateStatus",
-        id         : editId,
-        status     : editStatus,
-        keterangan : editKet,
-        km2        : editKm2 || "",
+        action: "updateStatus", id: editId,
+        status: editStatus, keterangan: editKet,
+        km2: editKm2 ? toNum(editKm2) : "",
       });
       if (result.success) {
         setSjList(prev => prev.map(sj =>
           sj.id === editId
-            ? { ...sj, status: editStatus, keterangan: editKet, km2: editKm2 ? parseInt(editKm2) : sj.km2 }
+            ? { ...sj, status: editStatus, keterangan: editKet, km2: editKm2 ? toNum(editKm2) : sj.km2 }
             : sj
         ));
         setEditId(null);
@@ -546,17 +625,22 @@ function AdminView() {
           }}>
             {editId === sj.id ? (
               <div>
-                <p style={{ margin: "0 0 10px", fontWeight: 800, color: "#1B2A4A" }}>Edit SJ {sj.nomorSJ}</p>
+                <p style={{ margin: "0 0 10px", fontWeight: 800, color: "#1B2A4A" }}>
+                  Edit {sj.nomorSJ}
+                </p>
                 <select value={editStatus} onChange={e => setEditStatus(e.target.value)}
                   style={{ ...inputStyle, fontSize: 14, marginBottom: 8, border: "1.5px solid #cbd5e1" }}>
                   {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 <div style={{ marginBottom: 8 }}>
                   <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>🏁 KM Tiba</label>
-                  <input type="number" min={0} value={editKm2}
+                  <input
+                    type="text" inputMode="numeric" pattern="[0-9]*"
+                    value={editKm2}
                     placeholder={sj.km1 ? `> ${Number(sj.km1).toLocaleString("id-ID")}` : "KM tiba"}
-                    onChange={e => setEditKm2(e.target.value)}
-                    style={{ ...inputStyle, fontSize: 14, border: "1.5px solid #cbd5e1" }} />
+                    onChange={e => setEditKm2(e.target.value.replace(/[^0-9]/g, ""))}
+                    style={{ ...inputStyle, fontSize: 14, border: "1.5px solid #cbd5e1" }}
+                  />
                 </div>
                 <input type="text" placeholder="Keterangan (opsional)"
                   value={editKet} onChange={e => setEditKet(e.target.value)}
@@ -579,18 +663,20 @@ function AdminView() {
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
-                      <span style={{ fontSize: 16, fontWeight: 900, color: "#1B2A4A", letterSpacing: 1 }}>
-                        SJ {sj.nomorSJ}
+                      <span style={{ fontSize: 14, fontWeight: 900, color: "#1B2A4A", letterSpacing: 0.5 }}>
+                        {sj.nomorSJ}
                       </span>
                       <StatusBadge status={sj.status} />
                       {sj.photoUrl && (
                         <span style={{ background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                          📷 Ada foto
+                          📷
                         </span>
                       )}
                     </div>
                     <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-                      {sj.namaDriver} · {sj.timestamp}
+                      {sj.namaDriver}
+                      {sj.assDriver ? <span style={{ color: "#94a3b8" }}> + {sj.assDriver}</span> : ""}
+                      {" · "}{sj.timestamp}
                     </p>
                     <KmRow km1={sj.km1} km2={sj.km2} />
                     {sj.keterangan ? (
@@ -607,18 +693,11 @@ function AdminView() {
                 </div>
                 {sj.photoUrl && (
                   <div style={{ marginTop: 10 }}>
-                    <img
-                      src={sj.photoUrl}
-                      onClick={() => setFullPhoto(sj.photoUrl)}
-                      style={{
-                        width: "100%", maxHeight: 140, objectFit: "cover",
-                        borderRadius: 8, border: "1.5px solid #e2e8f0",
-                        cursor: "zoom-in", display: "block",
-                      }}
-                    />
-                    <p style={{ color: "#94a3b8", fontSize: 10, marginTop: 4, textAlign: "right" }}>
-                      Ketuk untuk perbesar
-                    </p>
+                    <img src={sj.photoUrl} onClick={() => setFullPhoto(sj.photoUrl)} style={{
+                      width: "100%", maxHeight: 140, objectFit: "cover",
+                      borderRadius: 8, border: "1.5px solid #e2e8f0",
+                      cursor: "zoom-in", display: "block",
+                    }} />
                   </div>
                 )}
               </div>
@@ -650,12 +729,16 @@ function AdminView() {
 // APP ROOT
 // ══════════════════════════════════════════════════════════════
 export default function App() {
-  const [activeTab, setActiveTab] = useState("driver");
-  const [drivers, setDrivers]     = useState([]);
+  const [activeTab, setActiveTab]   = useState("driver");
+  const [drivers, setDrivers]       = useState([]);
+  const [assDrivers, setAssDrivers] = useState([]);
 
   useEffect(() => {
     apiGet({ action: "getDriverList" })
       .then(r => { if (r.success) setDrivers(r.data); })
+      .catch(() => {});
+    apiGet({ action: "getAssDriverList" })
+      .then(r => { if (r.success) setAssDrivers(r.data); })
       .catch(() => {});
   }, []);
 
@@ -677,7 +760,10 @@ export default function App() {
         </div>
       </div>
 
-      {activeTab === "driver" ? <DriverView drivers={drivers} /> : <AdminView />}
+      {activeTab === "driver"
+        ? <DriverView drivers={drivers} assDrivers={assDrivers} />
+        : <AdminView />
+      }
 
       <div style={{
         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
