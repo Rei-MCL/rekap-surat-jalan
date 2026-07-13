@@ -16,6 +16,31 @@ const DEFAULT_ASS        = ["Adit","Agym"];
 const OFFLINE_QUEUE_KEY  = "sj_offline_queue";
 const CRED_CACHE_KEY     = "sj_cached_creds";
 const USER_LIST_CACHE_KEY= "sj_user_list";
+const SUBMITTED_SJ_KEY   = "sj_submitted";
+
+// ── Tracking SJ yang sudah diinput (untuk cek duplikat offline) ─
+const getTodayKey = () => {
+  const d=new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+};
+const markSubmitted = (formattedSJ) => {
+  try {
+    const data=JSON.parse(localStorage.getItem(SUBMITTED_SJ_KEY)||"{}");
+    const today=getTodayKey();
+    if(!data[today])data[today]=[];
+    if(!data[today].includes(formattedSJ))data[today].push(formattedSJ);
+    // Hapus data lebih dari 3 hari
+    const cutoff=String(parseInt(today)-3);
+    Object.keys(data).forEach(k=>{if(k<cutoff)delete data[k];});
+    localStorage.setItem(SUBMITTED_SJ_KEY,JSON.stringify(data));
+  } catch {}
+};
+const isAlreadySubmitted = (formattedSJ) => {
+  try {
+    const data=JSON.parse(localStorage.getItem(SUBMITTED_SJ_KEY)||"{}");
+    return (data[getTodayKey()]||[]).includes(formattedSJ);
+  } catch { return false; }
+};
 
 // ── Hash sederhana untuk simpan kredensial offline ────────────
 const simpleHash = str => {
@@ -216,6 +241,38 @@ function LoginScreen({userList,onLogin,isOnline}){
 }
 
 // ── Input jam format 24 jam (ketik langsung, misal 13:30) ────
+// ── Toast notification (muncul di bawah layar) ───────────────
+function Toast({message,type="success",onClose}){
+  useEffect(()=>{
+    const t=setTimeout(onClose,4500);
+    return()=>clearTimeout(t);
+  },[onClose]);
+
+  const cfg={
+    success:{bg:"#dcfce7",border:"#86efac",color:"#15803d",icon:"✅"},
+    error:  {bg:"#fee2e2",border:"#fca5a5",color:"#dc2626",icon:"❌"},
+    warning:{bg:"#fef3c7",border:"#fbbf24",color:"#92400e",icon:"⚠️"},
+    info:   {bg:"#dbeafe",border:"#93c5fd",color:"#1e40af",icon:"📥"},
+  }[type]||{bg:"#f1f5f9",border:"#cbd5e1",color:"#475569",icon:"ℹ️"};
+
+  return(
+    <div style={{
+      position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",
+      width:"calc(100% - 32px)",maxWidth:388,
+      background:cfg.bg,border:`1.5px solid ${cfg.border}`,
+      borderRadius:14,padding:"14px 16px",
+      boxShadow:"0 8px 32px rgba(0,0,0,0.18)",
+      zIndex:9500,display:"flex",alignItems:"center",gap:10,
+      animation:"slideUp 0.25s ease",
+    }}>
+      <style>{`@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}`}</style>
+      <span style={{fontSize:22,flexShrink:0}}>{cfg.icon}</span>
+      <p style={{margin:0,color:cfg.color,fontSize:13,fontWeight:700,flex:1,lineHeight:1.4}}>{message}</p>
+      <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:cfg.color,fontSize:20,padding:0,flexShrink:0,opacity:0.6}}>✕</button>
+    </div>
+  );
+}
+
 function TimeInput24({value,onChange,placeholder="HH:MM (24 jam)"}){
   const handleChange=(e)=>{
     let raw=e.target.value.replace(/[^0-9]/g,"");
@@ -268,11 +325,16 @@ function DriverView({assDrivers,driverName}){
     [km1,setKm1]=useState(""),[km2,setKm2]=useState(""),
     [jamTiba,setJT]=useState(""),[jamSelesai,setJS]=useState(""),
     [status,setStat]=useState("Selesai"),[catatan,setCat]=useState(""),
-    [loading,setLoad]=useState(false),[success,setSucc]=useState(null),
-    [error,setErr]=useState({}),[dupWarn,setDupWarn]=useState("");
+    [loading,setLoad]=useState(false),[error,setErr]=useState({});
   const[isOnline,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   const[queueLen,setQLen]=useState(()=>getQueue().length);
   const[syncing,setSyncing]=useState(false);
+  const[toast,setToast]=useState(null); // {message, type}
+
+  const showToast=(message,type="success")=>{
+    setToast({message,type});
+  };
+  const closeToast=()=>setToast(null);
 
   // ── Kirim antrian offline ke server ──────────────────────
   const syncQueue=async()=>{
@@ -290,9 +352,7 @@ function DriverView({assDrivers,driverName}){
   };
 
   useEffect(()=>{
-    // Sync otomatis saat app dibuka (kalau ada antrian)
     if(navigator.onLine){syncQueue();}
-
     const onOn=()=>{setOnline(true);syncQueue();};
     const onOff=()=>setOnline(false);
     window.addEventListener("online",onOn);
@@ -321,40 +381,55 @@ function DriverView({assDrivers,driverName}){
 
   const resetForm=()=>{
     setJM("");setNSJ("");setKat("");setKm1("");setKm2("");
-    setJT("");setJS("");setStat("Selesai");setCat("");setAD([]);setErr({});setDupWarn("");
+    setJT("");setJS("");setStat("Selesai");setCat("");setAD([]);setErr({});
   };
 
   const handleSubmit=async()=>{
     const errs=validate();
     if(Object.keys(errs).length){setErr(errs);return;}
-    setDupWarn("");setLoad(true);
+    setLoad(true);
     const nn=String(parseInt(nomorSJ)).padStart(4,"0");
     const params={action:"addSJ",jenisMobil,namaDriver:driverName,assDriver:assDriver.join(", "),nomorSJ:nn,kategori,km1:toNum(km1),km2:km2?toNum(km2):"",jamTiba,jamSelesai,status,catatan};
 
-    // Mode offline: simpan ke queue
+    // ── Mode offline ─────────────────────────────────────────
     if(!isOnline){
-      const q=[...getQueue(),params]; saveQueue(q); setQLen(q.length);
-      setSucc({formattedSJ:preview,timestamp:"tersimpan offline",status,kategori,jenisMobil,offline:true});
-      resetForm(); setLoad(false); return;
+      // Cek duplikat dari cache lokal
+      if(isAlreadySubmitted(preview)){
+        showToast(`⚠️ ${preview} sudah pernah diinput hari ini!\nPastikan nomor SJ benar.`,"warning");
+        setLoad(false);
+        return;
+      }
+      const q=[...getQueue(),params];
+      saveQueue(q);
+      setQLen(q.length);
+      markSubmitted(preview);
+      showToast(`📥 ${preview} tersimpan offline\nAkan dikirim otomatis saat ada internet.`,"info");
+      resetForm();
+      setLoad(false);
+      return;
     }
 
+    // ── Mode online ──────────────────────────────────────────
     try{
       const result=await apiGet(params);
       if(result.success){
-        setSucc({formattedSJ:result.formattedSJ,timestamp:result.timestamp,status,kategori,jenisMobil,offline:false});
+        markSubmitted(result.formattedSJ);
+        showToast(`✅ ${result.formattedSJ} berhasil disimpan!\n${jenisMobil} · ${driverName} · ${result.timestamp}`,"success");
         resetForm();
       } else if(result.isDuplicate){
-        setDupWarn(result.error||"SJ ini sudah Selesai.");
+        showToast(`⚠️ ${result.error||"SJ ini sudah berstatus Selesai."}\nNomor SJ Tunda/Kembali/Batal masih bisa diinput.`,"warning");
       } else {
-        setErr({submit:"Gagal: "+(result.error||"Error tidak dikenal")});
+        showToast("❌ Gagal menyimpan: "+(result.error||"Error tidak dikenal"),"error");
       }
-    }catch(e){setErr({submit:"Koneksi bermasalah."});}
+    }catch(e){
+      showToast("❌ Koneksi bermasalah. Coba lagi.","error");
+    }
     setLoad(false);
   };
 
   return(
     <div style={{padding:20,paddingBottom:40}}>
-      {/* Offline / queue indicator */}
+      {/* Offline banner */}
       {!isOnline&&<div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📵</span><div><p style={{margin:0,fontWeight:700,color:"#92400e",fontSize:13}}>Mode Offline</p><p style={{margin:0,fontSize:11,color:"#b45309"}}>SJ akan tersimpan & dikirim otomatis saat online</p></div></div>}
       {isOnline&&queueLen>0&&(
         <div style={{background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:10,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
@@ -374,9 +449,11 @@ function DriverView({assDrivers,driverName}){
         <h2 style={{margin:"4px 0 0",fontSize:20,color:"#1B2A4A",fontWeight:800}}>Input Surat Jalan</h2>
       </div>
 
-      {success&&(<div style={{background:success.offline?"#fef3c7":"#dcfce7",border:`1px solid ${success.offline?"#fbbf24":"#86efac"}`,borderRadius:12,padding:"14px 16px",marginBottom:20,display:"flex",alignItems:"flex-start",gap:10}}><span style={{fontSize:20}}>{success.offline?"📥":"✅"}</span><div><p style={{margin:0,fontWeight:700,color:success.offline?"#92400e":"#15803d",fontSize:13}}>{success.formattedSJ} {success.offline?"disimpan offline!":"berhasil disimpan!"}</p><p style={{margin:"2px 0 0",color:success.offline?"#b45309":"#16a34a",fontSize:12}}>{success.jenisMobil} · {driverName} · {success.timestamp}</p><p style={{margin:"2px 0 0",color:success.offline?"#b45309":"#16a34a",fontSize:12}}>{success.kategori} · {success.status}</p></div></div>)}
+      {/* Toast notification */}
+      {toast&&<Toast message={toast.message} type={toast.type} onClose={closeToast}/>}
+
+      {/* Error validasi form */}
       {error.submit&&<div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:12,padding:"12px 16px",marginBottom:16,color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {error.submit}</div>}
-      {dupWarn&&<div style={{background:"#fef3c7",border:"2px solid #fbbf24",borderRadius:12,padding:"14px 16px",marginBottom:16}}><p style={{margin:0,fontWeight:800,color:"#92400e",fontSize:14}}>⚠️ Peringatan Duplikat</p><p style={{margin:"4px 0 0",color:"#b45309",fontSize:13}}>{dupWarn}</p><p style={{margin:"6px 0 0",color:"#64748b",fontSize:12}}>Jika SJ sudah berstatus Selesai, periksa kembali nomor SJ Anda. Nomor SJ dengan status Tunda/Kembali/Batal masih bisa diinput ulang.</p></div>}
 
       {/* Jenis Mobil */}
       <Field label="Jenis Mobil" err={error.jenisMobil}>
