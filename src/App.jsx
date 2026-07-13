@@ -14,6 +14,30 @@ const DEFAULT_DRIVERS    = ["Mas Galang","Bang Yus","Om Ipul"];
 const DEFAULT_ADMINS     = ["Mega","Ade","Vio","Dilla","Aghis"];
 const DEFAULT_ASS        = ["Adit","Agym"];
 const OFFLINE_QUEUE_KEY  = "sj_offline_queue";
+const CRED_CACHE_KEY     = "sj_cached_creds";
+const USER_LIST_CACHE_KEY= "sj_user_list";
+
+// ── Hash sederhana untuk simpan kredensial offline ────────────
+const simpleHash = str => {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) { h=((h<<5)+h)+str.charCodeAt(i); h=h&h; }
+  return h.toString(16);
+};
+const saveCred = (name, pass, role) => {
+  try {
+    const c = JSON.parse(localStorage.getItem(CRED_CACHE_KEY)||"{}");
+    c[name] = { hash: simpleHash(pass), role };
+    localStorage.setItem(CRED_CACHE_KEY, JSON.stringify(c));
+  } catch {}
+};
+const verifyCred = (name, pass) => {
+  try {
+    const c = JSON.parse(localStorage.getItem(CRED_CACHE_KEY)||"{}");
+    const e = c[name];
+    if (e && e.hash === simpleHash(pass)) return { role: e.role };
+  } catch {}
+  return null;
+};
 
 // ── Helpers ───────────────────────────────────────────────────
 const toProperCase = s => s ? s.toLowerCase().replace(/(?:^|\s)\S/g,c=>c.toUpperCase()) : s;
@@ -94,23 +118,52 @@ function CatatanBadge({catatan,status}){
 // ══════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ══════════════════════════════════════════════════════════════
-function LoginScreen({userList,onLogin}){
+function LoginScreen({userList,onLogin,isOnline}){
   const[username,setUsername]=useState(""),[password,setPassword]=useState(""),
     [showPass,setShowPass]=useState(false),[error,setError]=useState(""),
     [loading,setLoading]=useState(false);
   const drivers=userList?.drivers||DEFAULT_DRIVERS;
   const admins=userList?.admins||DEFAULT_ADMINS;
   const owners=userList?.owners||["Owner"];
+
   const handleLogin=async()=>{
-    if(!username){setError("Pilih nama.");return;} if(!password){setError("Masukkan password.");return;}
+    if(!username){setError("Pilih nama.");return;}
+    if(!password){setError("Masukkan password.");return;}
+
+    // ── Mode Offline: cek kredensial yang sudah di-cache ─────
+    if(!isOnline){
+      const cached=verifyCred(username,password);
+      if(cached){
+        // Hanya driver yang bisa login offline
+        if(cached.role!=="driver"){
+          setError("Admin/Owner harus online untuk masuk.");
+          return;
+        }
+        onLogin({role:cached.role,name:username});
+      } else {
+        setError("Offline: Login dulu sekali saat ada internet.");
+      }
+      return;
+    }
+
+    // ── Mode Online: verifikasi ke server ────────────────────
     setLoading(true);
-    try{const r=await apiGet({action:"login",username,password});if(r.success){onLogin({role:r.role,name:r.displayName});}else{setError(r.error||"Nama atau password salah.");}}
-    catch(e){setError("Koneksi bermasalah.");}
+    try{
+      const r=await apiGet({action:"login",username,password});
+      if(r.success){
+        saveCred(username,password,r.role); // simpan untuk offline
+        onLogin({role:r.role,name:r.displayName});
+      }else{
+        setError(r.error||"Nama atau password salah.");
+      }
+    }catch(e){setError("Koneksi bermasalah. Coba lagi.");}
     setLoading(false);
   };
+
   const RC={driver:"#1B2A4A",admin:"#0f766e",owner:"#7c3aed"};
   const RL={driver:"🙋 Driver",admin:"📋 Admin",owner:"👑 Owner"};
   const role=owners.includes(username)?"owner":admins.includes(username)?"admin":"driver";
+
   return(
     <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",maxWidth:420,margin:"0 auto"}}>
       <div style={{background:"linear-gradient(135deg,#1B2A4A 0%,#2d4a7a 100%)",padding:"48px 24px 40px",textAlign:"center",color:"#fff"}}>
@@ -119,6 +172,18 @@ function LoginScreen({userList,onLogin}){
         <p style={{margin:"6px 0 0",fontSize:13,color:"#93c5fd"}}>Sistem Monitoring Pengiriman Maxcell Kolaka</p>
       </div>
       <div style={{flex:1,padding:24}}>
+
+        {/* Indikator offline */}
+        {!isOnline&&(
+          <div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:"10px 14px",marginBottom:20,display:"flex",alignItems:"flex-start",gap:8}}>
+            <span style={{fontSize:18}}>📵</span>
+            <div>
+              <p style={{margin:0,fontWeight:700,color:"#92400e",fontSize:13}}>Sedang Offline</p>
+              <p style={{margin:"2px 0 0",color:"#b45309",fontSize:11}}>Driver: bisa masuk jika sudah pernah login online.<br/>Admin/Owner: perlu koneksi internet.</p>
+            </div>
+          </div>
+        )}
+
         <p style={{textAlign:"center",color:"#64748b",fontSize:13,marginBottom:20,fontWeight:600}}>Masuk dengan akun Anda</p>
         <Field label="Nama" err={!username&&error?error:""}>
           <select value={username} onChange={e=>{setUsername(e.target.value);setError("");}} style={{...IS,...ARW,color:username?"#1B2A4A":"#94a3b8"}}>
@@ -130,15 +195,21 @@ function LoginScreen({userList,onLogin}){
         </Field>
         <Field label="Password" err={username&&error?error:""}>
           <div style={{position:"relative"}}>
-            <input type={showPass?"text":"password"} value={password} onChange={e=>{setPassword(e.target.value);setError("");}} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Masukkan password" style={{...IS,paddingRight:48,border:`1.5px solid ${username&&error?"#f87171":"#cbd5e1"}`}}/>
-            <button onClick={()=>setShowPass(!showPass)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#94a3b8",padding:4}}>{showPass?"🙈":"👁"}</button>
+            <input type={showPass?"text":"password"} value={password}
+              onChange={e=>{setPassword(e.target.value);setError("");}}
+              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+              placeholder="Masukkan password"
+              style={{...IS,paddingRight:48,border:`1.5px solid ${username&&error?"#f87171":"#cbd5e1"}`}}/>
+            <button onClick={()=>setShowPass(!showPass)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#94a3b8",padding:4}}>
+              {showPass?"🙈":"👁"}
+            </button>
           </div>
         </Field>
         {username&&<p style={{fontSize:12,color:RC[role],fontWeight:700,marginBottom:14,background:`${RC[role]}18`,padding:"6px 12px",borderRadius:8}}>{RL[role]} — {username}</p>}
-        <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>{loading?"Memverifikasi...":"Masuk"}</button>
-        <p style={{textAlign:"center",color:"#cbd5e1",fontSize:11,marginTop:32,letterSpacing:0.5}}>
-          © Reinhard J.C
-        </p>
+        <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>
+          {loading?"Memverifikasi...":isOnline?"Masuk":"Masuk (Offline)"}
+        </button>
+        <p style={{textAlign:"center",color:"#cbd5e1",fontSize:11,marginTop:32,letterSpacing:0.5}}>© Reinhard J.C</p>
       </div>
     </div>
   );
@@ -516,16 +587,42 @@ export default function App(){
   const[session,setSess]=useState(null),[adminTab,setTab]=useState("monitor"),
     [userList,setUL]=useState(null),[assDrivers,setAD]=useState(DEFAULT_ASS);
 
+  // ── Track status koneksi ──────────────────────────────────
+  const[isOnline,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   useEffect(()=>{
-    apiGet({action:"getUserList"}).then(r=>{if(r.success)setUL(r.data);}).catch(()=>{});
-    apiGet({action:"getAssDriverList"}).then(r=>{if(r.success&&r.data?.length)setAD(r.data);}).catch(()=>{});
+    const onOn=()=>setOnline(true);
+    const onOff=()=>setOnline(false);
+    window.addEventListener("online",onOn);
+    window.addEventListener("offline",onOff);
+    return()=>{window.removeEventListener("online",onOn);window.removeEventListener("offline",onOff);};
+  },[]);
+
+  // ── Load user list, cache untuk offline ──────────────────
+  useEffect(()=>{
+    apiGet({action:"getUserList"})
+      .then(r=>{
+        if(r.success){
+          setUL(r.data);
+          try{localStorage.setItem(USER_LIST_CACHE_KEY,JSON.stringify(r.data));}catch{}
+        }
+      })
+      .catch(()=>{
+        // Gunakan cache saat offline
+        try{
+          const cached=JSON.parse(localStorage.getItem(USER_LIST_CACHE_KEY)||"null");
+          if(cached)setUL(cached);
+        }catch{}
+      });
+    apiGet({action:"getAssDriverList"})
+      .then(r=>{if(r.success&&r.data?.length)setAD(r.data);})
+      .catch(()=>{});
   },[]);
 
   const isAO=session?.role==="admin"||session?.role==="owner";
   const RL={driver:"🙋 Driver",admin:"📋 Admin",owner:"👑 Owner"};
   const RC={driver:"#1B2A4A",admin:"#0f766e",owner:"#7c3aed"};
 
-  if(!session) return <LoginScreen userList={userList} onLogin={setSess}/>;
+  if(!session) return <LoginScreen userList={userList} onLogin={setSess} isOnline={isOnline}/>;
 
   return(
     <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f8fafc",fontFamily:"'Inter',system-ui,sans-serif",paddingBottom:isAO?80:20}}>
