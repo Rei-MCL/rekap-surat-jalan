@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwPl1aBQFzbnYjh7uVpcjZ8Y6-qh5aCVjoTVXJ2jaryTyx3g_pCckdE8VYFJuaoh_b2Bw/exec";
 
@@ -241,34 +241,37 @@ function LoginScreen({userList,onLogin,isOnline}){
 }
 
 // ── Input jam format 24 jam (ketik langsung, misal 13:30) ────
-// ── Toast notification (muncul di bawah layar) ───────────────
+// ── Toast notification (timer dikelola di luar komponen) ─────
 function Toast({message,type="success",onClose}){
-  useEffect(()=>{
-    const t=setTimeout(onClose,4500);
-    return()=>clearTimeout(t);
-  },[onClose]);
-
   const cfg={
-    success:{bg:"#dcfce7",border:"#86efac",color:"#15803d",icon:"✅"},
-    error:  {bg:"#fee2e2",border:"#fca5a5",color:"#dc2626",icon:"❌"},
-    warning:{bg:"#fef3c7",border:"#fbbf24",color:"#92400e",icon:"⚠️"},
-    info:   {bg:"#dbeafe",border:"#93c5fd",color:"#1e40af",icon:"📥"},
-  }[type]||{bg:"#f1f5f9",border:"#cbd5e1",color:"#475569",icon:"ℹ️"};
+    success:{bg:"#dcfce7",border:"#16a34a",color:"#15803d",icon:"✅"},
+    error:  {bg:"#fee2e2",border:"#dc2626",color:"#dc2626",icon:"❌"},
+    warning:{bg:"#fef3c7",border:"#d97706",color:"#92400e",icon:"⚠️"},
+    info:   {bg:"#dbeafe",border:"#2563eb",color:"#1e40af",icon:"📥"},
+  }[type]||{bg:"#f1f5f9",border:"#94a3b8",color:"#475569",icon:"ℹ️"};
 
   return(
     <div style={{
-      position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",
+      position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",
       width:"calc(100% - 32px)",maxWidth:388,
-      background:cfg.bg,border:`1.5px solid ${cfg.border}`,
-      borderRadius:14,padding:"14px 16px",
-      boxShadow:"0 8px 32px rgba(0,0,0,0.18)",
-      zIndex:9500,display:"flex",alignItems:"center",gap:10,
-      animation:"slideUp 0.25s ease",
+      background:cfg.bg,border:`2px solid ${cfg.border}`,
+      borderRadius:14,padding:"16px 18px",
+      boxShadow:"0 12px 40px rgba(0,0,0,0.22)",
+      zIndex:99999,display:"flex",alignItems:"flex-start",gap:12,
     }}>
-      <style>{`@keyframes slideUp{from{transform:translateX(-50%) translateY(20px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}`}</style>
-      <span style={{fontSize:22,flexShrink:0}}>{cfg.icon}</span>
-      <p style={{margin:0,color:cfg.color,fontSize:13,fontWeight:700,flex:1,lineHeight:1.4}}>{message}</p>
-      <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:cfg.color,fontSize:20,padding:0,flexShrink:0,opacity:0.6}}>✕</button>
+      <span style={{fontSize:24,flexShrink:0,marginTop:1}}>{cfg.icon}</span>
+      <div style={{flex:1,minWidth:0}}>
+        {message.split("\n").map((line,i)=>(
+          <p key={i} style={{margin:i===0?"0":"4px 0 0",color:cfg.color,
+            fontSize:i===0?14:12,fontWeight:i===0?800:600,lineHeight:1.4}}>
+            {line}
+          </p>
+        ))}
+      </div>
+      <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",
+        color:cfg.color,fontSize:22,padding:0,flexShrink:0,lineHeight:1,opacity:0.7}}>
+        ✕
+      </button>
     </div>
   );
 }
@@ -329,12 +332,22 @@ function DriverView({assDrivers,driverName}){
   const[isOnline,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   const[queueLen,setQLen]=useState(()=>getQueue().length);
   const[syncing,setSyncing]=useState(false);
-  const[toast,setToast]=useState(null); // {message, type}
+  const[toast,setToast]=useState(null);
+  const toastTimerRef=useRef(null);
 
-  const showToast=(message,type="success")=>{
+  const closeToast=useCallback(()=>setToast(null),[]);
+
+  const showToast=useCallback((message,type="success")=>{
+    // Bersihkan timer lama kalau ada
+    if(toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    // Set toast baru
     setToast({message,type});
-  };
-  const closeToast=()=>setToast(null);
+    // Auto-close setelah 5 detik
+    toastTimerRef.current=setTimeout(()=>{
+      setToast(null);
+      toastTimerRef.current=null;
+    },5000);
+  },[]);
 
   // ── Kirim antrian offline ke server ──────────────────────
   const syncQueue=async()=>{
