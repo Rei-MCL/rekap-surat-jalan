@@ -241,41 +241,6 @@ function LoginScreen({userList,onLogin,isOnline}){
 }
 
 // ── Input jam format 24 jam (ketik langsung, misal 13:30) ────
-// ── Toast notification (timer dikelola di luar komponen) ─────
-function Toast({message,type="success",onClose}){
-  const cfg={
-    success:{bg:"#dcfce7",border:"#16a34a",color:"#15803d",icon:"✅"},
-    error:  {bg:"#fee2e2",border:"#dc2626",color:"#dc2626",icon:"❌"},
-    warning:{bg:"#fef3c7",border:"#d97706",color:"#92400e",icon:"⚠️"},
-    info:   {bg:"#dbeafe",border:"#2563eb",color:"#1e40af",icon:"📥"},
-  }[type]||{bg:"#f1f5f9",border:"#94a3b8",color:"#475569",icon:"ℹ️"};
-
-  return(
-    <div style={{
-      position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",
-      width:"calc(100% - 32px)",maxWidth:388,
-      background:cfg.bg,border:`2px solid ${cfg.border}`,
-      borderRadius:14,padding:"16px 18px",
-      boxShadow:"0 12px 40px rgba(0,0,0,0.22)",
-      zIndex:99999,display:"flex",alignItems:"flex-start",gap:12,
-    }}>
-      <span style={{fontSize:24,flexShrink:0,marginTop:1}}>{cfg.icon}</span>
-      <div style={{flex:1,minWidth:0}}>
-        {message.split("\n").map((line,i)=>(
-          <p key={i} style={{margin:i===0?"0":"4px 0 0",color:cfg.color,
-            fontSize:i===0?14:12,fontWeight:i===0?800:600,lineHeight:1.4}}>
-            {line}
-          </p>
-        ))}
-      </div>
-      <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",
-        color:cfg.color,fontSize:22,padding:0,flexShrink:0,lineHeight:1,opacity:0.7}}>
-        ✕
-      </button>
-    </div>
-  );
-}
-
 function TimeInput24({value,onChange,placeholder="HH:MM (24 jam)"}){
   const handleChange=(e)=>{
     let raw=e.target.value.replace(/[^0-9]/g,"");
@@ -463,10 +428,7 @@ function DriverView({assDrivers,driverName}){
       </div>
 
       {/* Toast notification */}
-      {toast&&<Toast message={toast.message} type={toast.type} onClose={closeToast}/>}
 
-      {/* Error validasi form */}
-      {error.submit&&<div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:12,padding:"12px 16px",marginBottom:16,color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {error.submit}</div>}
 
       {/* Jenis Mobil */}
       <Field label="Jenis Mobil" err={error.jenisMobil}>
@@ -501,6 +463,28 @@ function DriverView({assDrivers,driverName}){
       <Field label="Catatan"><textarea value={catatan} onChange={e=>setCat(e.target.value)} placeholder="Contoh: Tunda karena macet, barang kurang, dll..." rows={3} style={{...IS,resize:"none",fontSize:14,lineHeight:1.5}}/></Field>
 
       <button onClick={handleSubmit} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",letterSpacing:0.5,boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>{loading?"⏳ Menyimpan...":isOnline?"Submit SJ":"📥 Simpan Offline"}</button>
+
+      {/* ── Notifikasi muncul langsung di bawah tombol Submit ── */}
+      {toast&&(()=>{
+        const cfg={
+          success:{bg:"#dcfce7",border:"#16a34a",color:"#15803d",icon:"✅"},
+          error:  {bg:"#fee2e2",border:"#dc2626",color:"#dc2626",icon:"❌"},
+          warning:{bg:"#fef3c7",border:"#d97706",color:"#92400e",icon:"⚠️"},
+          info:   {bg:"#dbeafe",border:"#2563eb",color:"#1e40af",icon:"📥"},
+        }[toast.type]||{bg:"#f1f5f9",border:"#94a3b8",color:"#475569",icon:"ℹ️"};
+        return(
+          <div style={{marginTop:14,background:cfg.bg,border:`2px solid ${cfg.border}`,borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"flex-start",gap:12}}>
+            <span style={{fontSize:24,flexShrink:0}}>{cfg.icon}</span>
+            <div style={{flex:1,minWidth:0}}>
+              {toast.message.split("\n").map((line,i)=>(
+                <p key={i} style={{margin:i===0?"0":"5px 0 0",color:cfg.color,fontSize:i===0?14:12,fontWeight:i===0?800:600,lineHeight:1.4}}>{line}</p>
+              ))}
+            </div>
+            <button onClick={closeToast} style={{background:"none",border:"none",cursor:"pointer",color:cfg.color,fontSize:20,padding:0,flexShrink:0,opacity:0.6,lineHeight:1}}>✕</button>
+          </div>
+        );
+      })()}
+
       <p style={{textAlign:"center",color:"#94a3b8",fontSize:12,marginTop:12}}>Punya lebih dari 1 SJ? Submit ulang untuk SJ berikutnya.</p>
     </div>
   );
