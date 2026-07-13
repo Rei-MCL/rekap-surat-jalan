@@ -1,7 +1,7 @@
 {
   "name": "Rekap Surat Jalan",
   "short_name": "Rekap SJ",
-  "description": "Aplikasi Rekap Surat Jalan Maxcell",
+  "description": "Sistem Monitoring Pengiriman Maxcell",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
@@ -9,14 +9,10 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }
