@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background rounded -->
+  <rect width="512" height="512" rx="90" fill="#1B2A4A"/>
+  <!-- Badan truk -->
+  <rect x="60" y="200" width="260" height="160" rx="12" fill="#ffffff"/>
+  <!-- Kabin truk -->
+  <rect x="320" y="240" width="130" height="120" rx="12" fill="#ffffff"/>
+  <!-- Kaca kabin -->
+  <rect x="332" y="252" width="90" height="60" rx="6" fill="#2d4a7a"/>
+  <!-- Roda kiri -->
+  <circle cx="130" cy="368" r="36" fill="#1B2A4A"/>
+  <circle cx="130" cy="368" r="18" fill="#64748b"/>
+  <!-- Roda tengah -->
+  <circle cx="270" cy="368" r="36" fill="#1B2A4A"/>
+  <circle cx="270" cy="368" r="18" fill="#64748b"/>
+  <!-- Roda kanan -->
+  <circle cx="410" cy="368" r="36" fill="#1B2A4A"/>
+  <circle cx="410" cy="368" r="18" fill="#64748b"/>
+  <!-- Garis bawah badan -->
+  <rect x="60" y="330" width="260" height="10" rx="4" fill="#e2e8f0"/>
+  <!-- Lampu depan -->
+  <rect x="448" y="290" width="20" height="14" rx="4" fill="#fbbf24"/>
+  <!-- Tulisan SJ -->
+  <text x="185" y="290" font-family="Arial Black,Arial" font-weight="900"
+        font-size="80" text-anchor="middle" fill="#1B2A4A">SJ</text>
+</svg>
