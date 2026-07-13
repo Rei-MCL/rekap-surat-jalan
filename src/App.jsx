@@ -1,54 +1,46 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-const API_URL = "https://script.google.com/macros/s/AKfycbwz_2H5-Ku_HfntZejAmoW7JZNVLVD6AAxZnetmaUdjwelFNmkOQwIs-uDRfMRmJGun3w/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwPl1aBQFzbnYjh7uVpcjZ8Y6-qh5aCVjoTVXJ2jaryTyx3g_pCckdE8VYFJuaoh_b2Bw/exec";
 
 const STATUS_CONFIG = {
-  Selesai: { color:"#16a34a", bg:"#dcfce7", icon:"✅" },
-  Tunda:   { color:"#d97706", bg:"#fef3c7", icon:"⏸" },
-  Kembali: { color:"#ea580c", bg:"#ffedd5", icon:"🔄" },
-  Batal:   { color:"#dc2626", bg:"#fee2e2", icon:"❌" },
+  Selesai:{ color:"#16a34a", bg:"#dcfce7", icon:"✅" },
+  Tunda:  { color:"#d97706", bg:"#fef3c7", icon:"⏸" },
+  Kembali:{ color:"#ea580c", bg:"#ffedd5", icon:"🔄" },
+  Batal:  { color:"#dc2626", bg:"#fee2e2", icon:"❌" },
 };
+const KATEGORI_LIST      = ["Keramik","Non-Keramik","Campuran"];
+const JENIS_MOBIL        = ["Besar","Kecil"];
+const DEFAULT_DRIVERS    = ["Mas Galang","Bang Yus","Om Ipul"];
+const DEFAULT_ADMINS     = ["Mega","Ade","Vio","Dilla","Aghis"];
+const DEFAULT_ASS        = ["Adit","Agym"];
+const OFFLINE_QUEUE_KEY  = "sj_offline_queue";
 
-const KATEGORI_LIST  = ["Keramik","Non-Keramik","Campuran"];
-const JENIS_MOBIL    = ["Besar","Kecil"];
-
-// Fallback list kalau API belum terhubung
-const DEFAULT_DRIVERS     = ["Mas Galang","Bang Yus","Om Ipul"];
-const DEFAULT_ADMINS      = ["Mega","Ade","Vio","Dilla","Aghis"];
-const DEFAULT_ASS_DRIVERS = ["Adit","Agym"];
-
-const toProperCase = (s) => s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c=>c.toUpperCase()) : s;
-const toNum        = (v) => parseInt(String(v).replace(/[^0-9]/g,""),10);
-const getSJPreview = (n) => {
-  const now=new Date(), yy=String(now.getFullYear()).slice(-2), mm=String(now.getMonth()+1).padStart(2,"0");
+// ── Helpers ───────────────────────────────────────────────────
+const toProperCase = s => s ? s.toLowerCase().replace(/(?:^|\s)\S/g,c=>c.toUpperCase()) : s;
+const toNum        = v => parseInt(String(v).replace(/[^0-9]/g,""),10);
+const getSJPreview = n => {
+  const d=new Date(), yy=String(d.getFullYear()).slice(-2), mm=String(d.getMonth()+1).padStart(2,"0");
   return `SP/KLK-${yy}${mm}${String(parseInt(n)||0).padStart(4,"0")}`;
 };
 const getTodayStr = () => {
   const d=new Date();
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
 };
-const toDateInput = (s) => {
-  if (!s) return "";
-  const [d,m,y]=s.split("/");
-  return `${y}-${m}-${d}`;
-};
-const fromDateInput = (v) => {
-  if (!v) return "";
-  const [y,m,d]=v.split("-");
-  return `${d}/${m}/${y}`;
-};
-const calcDurasiClient = (t1,t2) => {
-  if (!t1||!t2) return "";
+const toDateInput  = s => { if(!s)return""; const[d,m,y]=s.split("/"); return`${y}-${m}-${d}`; };
+const fromDateInput= v => { if(!v)return""; const[y,m,d]=v.split("-"); return`${d}/${m}/${y}`; };
+const calcDurasiCl = (t1,t2) => {
+  if(!t1||!t2)return"";
   try {
-    const [h1,m1]=t1.split(":").map(Number), [h2,m2]=t2.split(":").map(Number);
-    if ([h1,m1,h2,m2].some(isNaN)) return "";
-    let diff=(h2*60+m2)-(h1*60+m1);
-    if (diff<0) diff+=1440;
-    if (diff===0) return "";
-    const h=Math.floor(diff/60),m=diff%60;
+    const[h1,m1]=t1.split(":").map(Number),[h2,m2]=t2.split(":").map(Number);
+    if([h1,m1,h2,m2].some(isNaN))return"";
+    let d=(h2*60+m2)-(h1*60+m1); if(d<0)d+=1440; if(d===0)return"";
+    const h=Math.floor(d/60),m=d%60;
     return h>0?`${h} jam ${m} menit`:`${m} menit`;
-  } catch(e){return "";}
+  } catch(e){return"";}
 };
+
+const getQueue = () => { try{return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||"[]");}catch{return[];} };
+const saveQueue = q => { try{localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(q));}catch{} };
 
 async function apiGet(params) {
   const res=await fetch(API_URL+"?"+new URLSearchParams(params),{redirect:"follow"});
@@ -56,236 +48,97 @@ async function apiGet(params) {
 }
 
 // ── Shared styles ─────────────────────────────────────────────
-const IS={
-  width:"100%",padding:"12px 14px",borderRadius:10,
-  border:"1.5px solid #cbd5e1",fontSize:15,color:"#1B2A4A",
-  background:"#fff",boxSizing:"border-box",
-  fontFamily:"'Inter',system-ui,sans-serif",outline:"none",
-};
-const ARW={
-  appearance:"none",
-  backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
-  backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",
-};
+const IS={width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:15,color:"#1B2A4A",background:"#fff",boxSizing:"border-box",fontFamily:"'Inter',system-ui,sans-serif",outline:"none"};
+const ARW={appearance:"none",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center"};
 
-function Field({label,children,err,hint}) {
-  return (
-    <div style={{marginBottom:14}}>
-      <label style={{fontSize:13,fontWeight:700,color:"#374151",display:"block",marginBottom:6}}>{label}</label>
-      {children}
-      {hint&&!err&&<p style={{color:"#94a3b8",fontSize:11,marginTop:5}}>{hint}</p>}
-      {err&&<p style={{color:"#dc2626",fontSize:12,marginTop:5}}>{err}</p>}
-    </div>
-  );
+function Field({label,children,err,hint}){return(<div style={{marginBottom:14}}><label style={{fontSize:13,fontWeight:700,color:"#374151",display:"block",marginBottom:6}}>{label}</label>{children}{hint&&!err&&<p style={{color:"#94a3b8",fontSize:11,marginTop:5}}>{hint}</p>}{err&&<p style={{color:"#dc2626",fontSize:12,marginTop:5}}>{err}</p>}</div>);}
+function Divider({label}){return(<div style={{display:"flex",alignItems:"center",gap:8,margin:"4px 0 14px"}}><div style={{flex:1,height:1,background:"#e2e8f0"}}/><span style={{fontSize:11,color:"#94a3b8",fontWeight:700,whiteSpace:"nowrap"}}>{label}</span><div style={{flex:1,height:1,background:"#e2e8f0"}}/></div>);}
+
+function SelectWithCustom({options,value,onChange,placeholder,hasError}){
+  const[isC,setC]=useState(false),[raw,setR]=useState("");
+  return(<div><select value={isC?"__C__":(value||"")} onChange={e=>{if(e.target.value==="__C__"){setC(true);onChange("");}else{setC(false);onChange(e.target.value);}}} style={{...IS,...ARW,color:(value||isC)?"#1B2A4A":"#94a3b8",border:`1.5px solid ${hasError?"#f87171":"#cbd5e1"}`}}><option value="">{placeholder}</option>{options.map(o=><option key={o} value={o}>{o}</option>)}<option value="__C__">Lainnya (isi sendiri)...</option></select>{isC&&(<div style={{marginTop:8,position:"relative"}}><input type="text" value={raw} onChange={e=>{setR(e.target.value);onChange(toProperCase(e.target.value));}} onBlur={()=>{const p=toProperCase(raw);setR(p);onChange(p);}} placeholder="Ketik nama..." autoFocus style={{...IS,fontSize:14,border:"1.5px solid #3b82f6"}}/><button onClick={()=>{setC(false);setR("");onChange("");}} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,padding:4}}>✕</button></div>)}</div>);
 }
 
-function Divider({label}) {
-  return (
-    <div style={{display:"flex",alignItems:"center",gap:8,margin:"4px 0 14px"}}>
-      <div style={{flex:1,height:1,background:"#e2e8f0"}}/>
-      <span style={{fontSize:11,color:"#94a3b8",fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>
-      <div style={{flex:1,height:1,background:"#e2e8f0"}}/>
-    </div>
-  );
+function MultiSelectDropdown({options,values,onChange}){
+  const[showC,setSC]=useState(false),[cv,setCV]=useState("");
+  return(<div><select onChange={e=>{const v=e.target.value;if(!v)return;if(v==="__C__"){setSC(true);}else if(!values.includes(v)){onChange([...values,v]);}e.target.value="";}} defaultValue="" style={{...IS,...ARW,color:"#94a3b8"}}><option value="">-- Pilih Ass. Driver --</option>{options.filter(o=>!values.includes(o)).map(o=><option key={o} value={o}>{o}</option>)}<option value="__C__">Lainnya (isi sendiri)...</option></select>{showC&&(<div style={{display:"flex",gap:8,marginTop:8}}><input type="text" value={cv} onChange={e=>setCV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){const p=toProperCase(cv.trim());if(p&&!values.includes(p))onChange([...values,p]);setCV("");setSC(false);}}} placeholder="Ketik nama..." autoFocus style={{...IS,flex:1,fontSize:14}}/><button onClick={()=>{const p=toProperCase(cv.trim());if(p&&!values.includes(p))onChange([...values,p]);setCV("");setSC(false);}} style={{padding:"0 16px",background:"#1B2A4A",color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:13}}>OK</button><button onClick={()=>{setSC(false);setCV("");}} style={{padding:"0 12px",background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:13}}>✕</button></div>)}{values.length>0&&(<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>{values.map(v=>(<span key={v} style={{display:"inline-flex",alignItems:"center",gap:6,background:"#1B2A4A",color:"#fff",padding:"7px 12px",borderRadius:20,fontSize:13,fontWeight:700}}>{v}<button onClick={()=>onChange(values.filter(x=>x!==v))} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>✕</button></span>))}</div>)}</div>);
 }
 
-function SelectWithCustom({options,value,onChange,placeholder,hasError}) {
-  const [isCustom,setIsCustom]=useState(false);
-  const [raw,setRaw]=useState("");
-  return (
-    <div>
-      <select value={isCustom?"__C__":(value||"")}
-        onChange={e=>{if(e.target.value==="__C__"){setIsCustom(true);onChange("");}else{setIsCustom(false);onChange(e.target.value);}}}
-        style={{...IS,...ARW,color:(value||isCustom)?"#1B2A4A":"#94a3b8",border:`1.5px solid ${hasError?"#f87171":"#cbd5e1"}`}}>
-        <option value="">{placeholder}</option>
-        {options.map(o=><option key={o} value={o}>{o}</option>)}
-        <option value="__C__">Lainnya (isi sendiri)...</option>
-      </select>
-      {isCustom&&(
-        <div style={{marginTop:8,position:"relative"}}>
-          <input type="text" value={raw}
-            onChange={e=>{setRaw(e.target.value);onChange(toProperCase(e.target.value));}}
-            onBlur={()=>{const p=toProperCase(raw);setRaw(p);onChange(p);}}
-            placeholder="Ketik nama..." autoFocus
-            style={{...IS,fontSize:14,border:`1.5px solid ${hasError?"#f87171":"#3b82f6"}`}}/>
-          <button onClick={()=>{setIsCustom(false);setRaw("");onChange("");}}
-            style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,padding:4}}>✕</button>
-        </div>
-      )}
-    </div>
-  );
+function KategoriSelector({value,onChange,hasError}){
+  const m={"Keramik":{icon:"🧱",color:"#1B2A4A"},"Non-Keramik":{icon:"📦",color:"#0f766e"},"Campuran":{icon:"🔀",color:"#7c3aed"}};
+  return(<div style={{display:"flex",gap:8}}>{KATEGORI_LIST.map(opt=>{const sel=value===opt,c=m[opt];return(<button key={opt} onClick={()=>onChange(opt)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",border:sel?"none":`1.5px solid ${hasError?"#f87171":"#cbd5e1"}`,background:sel?c.color:"#fff",color:sel?"#fff":"#475569",fontSize:12,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:3,boxShadow:sel?`0 0 0 2px ${c.color}`:undefined}}><span style={{fontSize:18}}>{c.icon}</span>{opt}</button>);})}</div>);
 }
 
-function MultiSelectDropdown({options,values,onChange}) {
-  const [showCustom,setShowCustom]=useState(false);
-  const [customVal,setCustomVal]=useState("");
-  return (
-    <div>
-      <select onChange={e=>{const v=e.target.value;if(!v)return;if(v==="__C__"){setShowCustom(true);}else if(!values.includes(v)){onChange([...values,v]);}e.target.value="";}} defaultValue="" style={{...IS,...ARW,color:"#94a3b8"}}>
-        <option value="">-- Pilih Ass. Driver --</option>
-        {options.filter(o=>!values.includes(o)).map(o=><option key={o} value={o}>{o}</option>)}
-        <option value="__C__">Lainnya (isi sendiri)...</option>
-      </select>
-      {showCustom&&(
-        <div style={{display:"flex",gap:8,marginTop:8}}>
-          <input type="text" value={customVal} onChange={e=>setCustomVal(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"){const p=toProperCase(customVal.trim());if(p&&!values.includes(p))onChange([...values,p]);setCustomVal("");setShowCustom(false);}}}
-            placeholder="Ketik nama..." autoFocus style={{...IS,flex:1,fontSize:14}}/>
-          <button onClick={()=>{const p=toProperCase(customVal.trim());if(p&&!values.includes(p))onChange([...values,p]);setCustomVal("");setShowCustom(false);}} style={{padding:"0 16px",background:"#1B2A4A",color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:13}}>OK</button>
-          <button onClick={()=>{setShowCustom(false);setCustomVal("");}} style={{padding:"0 12px",background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontSize:13}}>✕</button>
-        </div>
-      )}
-      {values.length>0&&(
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
-          {values.map(v=>(
-            <span key={v} style={{display:"inline-flex",alignItems:"center",gap:6,background:"#1B2A4A",color:"#fff",padding:"7px 12px",borderRadius:20,fontSize:13,fontWeight:700}}>
-              {v}<button onClick={()=>onChange(values.filter(x=>x!==v))} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>✕</button>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function StatusSelector({value,onChange}){
+  return(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{Object.entries(STATUS_CONFIG).map(([s,cfg])=>{const sel=value===s;return(<button key={s} onClick={()=>onChange(s)} style={{padding:"11px 12px",borderRadius:10,cursor:"pointer",border:sel?"none":"1.5px solid #cbd5e1",background:sel?cfg.bg:"#fff",color:sel?cfg.color:"#64748b",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8,boxShadow:sel?`0 0 0 2px ${cfg.color}`:"none"}}><span style={{fontSize:18}}>{cfg.icon}</span>{s}</button>);})}</div>);
 }
 
-function KategoriSelector({value,onChange,hasError}) {
-  const meta={"Keramik":{icon:"🧱",color:"#1B2A4A"},"Non-Keramik":{icon:"📦",color:"#0f766e"},"Campuran":{icon:"🔀",color:"#7c3aed"}};
-  return (
-    <div style={{display:"flex",gap:8}}>
-      {KATEGORI_LIST.map(opt=>{const sel=value===opt,m=meta[opt];return(
-        <button key={opt} onClick={()=>onChange(opt)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",border:sel?"none":`1.5px solid ${hasError?"#f87171":"#cbd5e1"}`,background:sel?m.color:"#fff",color:sel?"#fff":"#475569",fontSize:12,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:3,boxShadow:sel?`0 0 0 2px ${m.color}`:undefined}}>
-          <span style={{fontSize:18}}>{m.icon}</span>{opt}
-        </button>
-      );})}
-    </div>
-  );
-}
-
-function StatusSelector({value,onChange}) {
-  return (
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-      {Object.entries(STATUS_CONFIG).map(([s,cfg])=>{const sel=value===s;return(
-        <button key={s} onClick={()=>onChange(s)} style={{padding:"11px 12px",borderRadius:10,cursor:"pointer",border:sel?"none":"1.5px solid #cbd5e1",background:sel?cfg.bg:"#fff",color:sel?cfg.color:"#64748b",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8,boxShadow:sel?`0 0 0 2px ${cfg.color}`:"none"}}>
-          <span style={{fontSize:18}}>{cfg.icon}</span>{s}
-        </button>
-      );})}
-    </div>
-  );
-}
-
-function StatusBadge({status}) {
+function StatusBadge({status}){
   const cfg=STATUS_CONFIG[status]||{color:"#475569",bg:"#f1f5f9",icon:"•"};
   return <span style={{backgroundColor:cfg.bg,color:cfg.color,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>{cfg.icon} {status}</span>;
 }
 
-function KmRow({km1,km2}) {
+function KmRow({km1,km2}){
   if(!km1)return null;
-  const jarak=km2&&Number(km2)>Number(km1)?Number(km2)-Number(km1):null;
-  return (
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:5}}>
-      <span style={{background:"#f1f5f9",color:"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>🛣 {Number(km1).toLocaleString("id-ID")} km</span>
-      {km2?<span style={{background:"#f1f5f9",color:"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>🏁 {Number(km2).toLocaleString("id-ID")} km</span>
-          :<span style={{background:"#fef9c3",color:"#a16207",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>🏁 KM Tiba belum diisi</span>}
-      {jarak&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>📏 {jarak.toLocaleString("id-ID")} km</span>}
-    </div>
-  );
+  const j=km2&&Number(km2)>Number(km1)?Number(km2)-Number(km1):null;
+  return(<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:5}}><span style={{background:"#f1f5f9",color:"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>🛣 {Number(km1).toLocaleString("id-ID")} km</span>{km2?<span style={{background:"#f1f5f9",color:"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>🏁 {Number(km2).toLocaleString("id-ID")} km</span>:<span style={{background:"#fef9c3",color:"#a16207",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>🏁 KM Tiba belum diisi</span>}{j&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>📏 {j.toLocaleString("id-ID")} km</span>}</div>);
+}
+
+// ── Catatan badge: hijau jika Selesai, merah jika ada masalah ─
+function CatatanBadge({catatan,status}){
+  if(!catatan)return null;
+  const isOk=status==="Selesai";
+  return(<p style={{margin:"6px 0 0",fontSize:12,fontWeight:700,color:isOk?"#16a34a":"#dc2626",background:isOk?"#dcfce7":"#fee2e2",padding:"5px 10px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:4}}>{isOk?"✅":"⚠️"} {catatan}</p>);
 }
 
 // ══════════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ══════════════════════════════════════════════════════════════
-function LoginScreen({userList,onLogin}) {
-  const [username,setUsername] = useState("");
-  const [password,setPassword] = useState("");
-  const [showPass,setShowPass] = useState(false);
-  const [error,setError]       = useState("");
-  const [loading,setLoading]   = useState(false);
-
-  const drivers = userList?.drivers || DEFAULT_DRIVERS;
-  const admins  = userList?.admins  || DEFAULT_ADMINS;
-  const owners  = userList?.owners  || ["Owner"];
-
+function LoginScreen({userList,onLogin}){
+  const[username,setUsername]=useState(""),[password,setPassword]=useState(""),
+    [showPass,setShowPass]=useState(false),[error,setError]=useState(""),
+    [loading,setLoading]=useState(false);
+  const drivers=userList?.drivers||DEFAULT_DRIVERS;
+  const admins=userList?.admins||DEFAULT_ADMINS;
+  const owners=userList?.owners||["Owner"];
   const handleLogin=async()=>{
-    if(!username){setError("Pilih nama terlebih dahulu.");return;}
-    if(!password){setError("Masukkan password.");return;}
+    if(!username){setError("Pilih nama.");return;} if(!password){setError("Masukkan password.");return;}
     setLoading(true);
-    try {
-      const r=await apiGet({action:"login",username,password});
-      if(r.success){onLogin({role:r.role,name:r.displayName});}
-      else{setError(r.error||"Nama atau password salah.");}
-    } catch(e){setError("Koneksi bermasalah. Coba lagi.");}
+    try{const r=await apiGet({action:"login",username,password});if(r.success){onLogin({role:r.role,name:r.displayName});}else{setError(r.error||"Nama atau password salah.");}}
+    catch(e){setError("Koneksi bermasalah.");}
     setLoading(false);
   };
-
-  const ROLE_COLOR = { driver:"#1B2A4A", admin:"#0f766e", owner:"#7c3aed" };
-
-  return (
+  const RC={driver:"#1B2A4A",admin:"#0f766e",owner:"#7c3aed"};
+  const RL={driver:"🙋 Driver",admin:"📋 Admin",owner:"👑 Owner"};
+  const role=owners.includes(username)?"owner":admins.includes(username)?"admin":"driver";
+  return(
     <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",flexDirection:"column",maxWidth:420,margin:"0 auto"}}>
       <div style={{background:"linear-gradient(135deg,#1B2A4A 0%,#2d4a7a 100%)",padding:"48px 24px 40px",textAlign:"center",color:"#fff"}}>
         <div style={{fontSize:52,marginBottom:12}}>🚚</div>
-        <h1 style={{margin:0,fontSize:22,fontWeight:900,letterSpacing:0.5}}>Rekap Surat Jalan</h1>
+        <h1 style={{margin:0,fontSize:22,fontWeight:900}}>Rekap Surat Jalan</h1>
         <p style={{margin:"6px 0 0",fontSize:13,color:"#93c5fd"}}>Sistem Monitoring Pengiriman Maxcell</p>
       </div>
-
       <div style={{flex:1,padding:24}}>
-        <p style={{textAlign:"center",color:"#64748b",fontSize:13,marginBottom:20,fontWeight:600}}>Silakan masuk dengan akun Anda</p>
-
-        {/* Dropdown nama - dikelompokkan */}
-        <Field label="Nama" err={error&&!username?error:""}>
-          <select value={username} onChange={e=>{setUsername(e.target.value);setError("");}}
-            style={{...IS,...ARW,color:username?"#1B2A4A":"#94a3b8"}}>
+        <p style={{textAlign:"center",color:"#64748b",fontSize:13,marginBottom:20,fontWeight:600}}>Masuk dengan akun Anda</p>
+        <Field label="Nama" err={!username&&error?error:""}>
+          <select value={username} onChange={e=>{setUsername(e.target.value);setError("");}} style={{...IS,...ARW,color:username?"#1B2A4A":"#94a3b8"}}>
             <option value="">-- Pilih nama --</option>
-            <optgroup label="👑 Owner">
-              {owners.map(n=><option key={n} value={n}>{n}</option>)}
-            </optgroup>
-            <optgroup label="📋 Admin">
-              {admins.map(n=><option key={n} value={n}>{n}</option>)}
-            </optgroup>
-            <optgroup label="🙋 Driver">
-              {drivers.map(n=><option key={n} value={n}>{n}</option>)}
-            </optgroup>
+            <optgroup label="👑 Owner">{owners.map(n=><option key={n} value={n}>{n}</option>)}</optgroup>
+            <optgroup label="📋 Admin">{admins.map(n=><option key={n} value={n}>{n}</option>)}</optgroup>
+            <optgroup label="🙋 Driver">{drivers.map(n=><option key={n} value={n}>{n}</option>)}</optgroup>
           </select>
         </Field>
-
-        {/* Password */}
-        <Field label="Password" err={error&&username?error:""}>
+        <Field label="Password" err={username&&error?error:""}>
           <div style={{position:"relative"}}>
-            <input type={showPass?"text":"password"} value={password}
-              onChange={e=>{setPassword(e.target.value);setError("");}}
-              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="Masukkan password"
-              style={{...IS,paddingRight:48,border:`1.5px solid ${error&&username?"#f87171":"#cbd5e1"}`}}/>
-            <button onClick={()=>setShowPass(!showPass)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#94a3b8",padding:4}}>
-              {showPass?"🙈":"👁"}
-            </button>
+            <input type={showPass?"text":"password"} value={password} onChange={e=>{setPassword(e.target.value);setError("");}} onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="Masukkan password" style={{...IS,paddingRight:48,border:`1.5px solid ${username&&error?"#f87171":"#cbd5e1"}`}}/>
+            <button onClick={()=>setShowPass(!showPass)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#94a3b8",padding:4}}>{showPass?"🙈":"👁"}</button>
           </div>
         </Field>
-
-        {/* Info role yang dipilih */}
-        {username&&(()=>{
-          const isDriver=drivers.includes(username);
-          const isAdmin=admins.includes(username);
-          const isOwner=owners.includes(username);
-          const role=isOwner?"owner":isAdmin?"admin":"driver";
-          const label=isOwner?"👑 Owner":isAdmin?"📋 Admin":"🙋 Driver";
-          return <p style={{fontSize:12,color:ROLE_COLOR[role]||"#64748b",fontWeight:700,marginBottom:14,background:`${ROLE_COLOR[role]}15`,padding:"6px 12px",borderRadius:8}}>
-            {label} — {username}
-          </p>;
-        })()}
-
-        <button onClick={handleLogin} disabled={loading} style={{
-          width:"100%",padding:"14px",
-          background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",
-          color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,
-          cursor:loading?"default":"pointer",boxShadow:"0 4px 12px rgba(27,42,74,0.3)",
-        }}>{loading?"Memverifikasi...":"Masuk"}</button>
-
-        {/* Info password default */}
-        <div style={{marginTop:24,background:"#f1f5f9",borderRadius:10,padding:"12px 14px"}}>
-          <p style={{margin:0,fontSize:11,color:"#64748b",fontWeight:700}}>Info password default:</p>
-          <p style={{margin:"4px 0 0",fontSize:11,color:"#94a3b8"}}>Driver: [namadepan]123 (mis. galang123)</p>
-          <p style={{margin:"2px 0 0",fontSize:11,color:"#94a3b8"}}>Admin: [nama]123 (mis. mega123)</p>
-          <p style={{margin:"2px 0 0",fontSize:11,color:"#94a3b8"}}>Owner: owner2026</p>
+        {username&&<p style={{fontSize:12,color:RC[role],fontWeight:700,marginBottom:14,background:`${RC[role]}18`,padding:"6px 12px",borderRadius:8}}>{RL[role]} — {username}</p>}
+        <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>{loading?"Memverifikasi...":"Masuk"}</button>
+        <div style={{marginTop:20,background:"#f1f5f9",borderRadius:10,padding:"12px 14px"}}>
+          <p style={{margin:0,fontSize:11,color:"#64748b",fontWeight:700}}>Password default:</p>
+          <p style={{margin:"4px 0 0",fontSize:11,color:"#94a3b8"}}>Driver: [namadepan]123 &nbsp;|&nbsp; Admin: [nama]123 &nbsp;|&nbsp; Owner: owner2026</p>
         </div>
       </div>
     </div>
@@ -293,26 +146,36 @@ function LoginScreen({userList,onLogin}) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// DRIVER VIEW
+// DRIVER VIEW — dengan offline queue
 // ══════════════════════════════════════════════════════════════
-function DriverView({assDrivers,driverName}) {
-  const [jenisMobil,setJenisMobil] = useState("");
-  const [assDriver,setAssDriver]   = useState([]);
-  const [nomorSJ,setNomorSJ]       = useState("");
-  const [kategori,setKategori]     = useState("");
-  const [km1,setKm1]               = useState("");
-  const [km2,setKm2]               = useState("");
-  const [jamTiba,setJamTiba]       = useState("");
-  const [jamSelesai,setJamSelesai] = useState("");
-  const [status,setStatus]         = useState("Selesai");
-  const [catatan,setCatatan]       = useState("");
-  const [loading,setLoading]       = useState(false);
-  const [success,setSuccess]       = useState(null);
-  const [error,setError]           = useState({});
+function DriverView({assDrivers,driverName}){
+  const[jenisMobil,setJM]=useState(""),[assDriver,setAD]=useState([]),
+    [nomorSJ,setNSJ]=useState(""),[kategori,setKat]=useState(""),
+    [km1,setKm1]=useState(""),[km2,setKm2]=useState(""),
+    [jamTiba,setJT]=useState(""),[jamSelesai,setJS]=useState(""),
+    [status,setStat]=useState("Selesai"),[catatan,setCat]=useState(""),
+    [loading,setLoad]=useState(false),[success,setSucc]=useState(null),
+    [error,setErr]=useState({}),[dupWarn,setDupWarn]=useState("");
+  const[isOnline,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
+  const[queueLen,setQLen]=useState(()=>getQueue().length);
+
+  const syncQueue=useCallback(async()=>{
+    const q=getQueue(); if(!q.length)return;
+    const rem=[];
+    for(const item of q){try{await apiGet(item);}catch{rem.push(item);}}
+    saveQueue(rem); setQLen(rem.length);
+  },[]);
+
+  useEffect(()=>{
+    const onOn=()=>{setOnline(true);syncQueue();};
+    const onOff=()=>setOnline(false);
+    window.addEventListener("online",onOn); window.addEventListener("offline",onOff);
+    return()=>{window.removeEventListener("online",onOn);window.removeEventListener("offline",onOff);};
+  },[syncQueue]);
 
   const today=new Date().toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"});
   const preview=getSJPreview(nomorSJ);
-  const durasiPreview=calcDurasiClient(jamTiba,jamSelesai);
+  const durPrev=calcDurasiCl(jamTiba,jamSelesai);
 
   const validate=()=>{
     const e={};
@@ -322,126 +185,87 @@ function DriverView({assDrivers,driverName}) {
     if(!kategori)e.kategori="Pilih kategori SJ.";
     const k1=toNum(km1);
     if(!km1||isNaN(k1)||k1<0)e.km1="KM Berangkat wajib diisi.";
-    if(km2){const k2=toNum(km2);if(isNaN(k2)||k2<=toNum(km1))e.km2="KM Tiba harus lebih besar dari KM Berangkat.";}
+    if(km2){const k2=toNum(km2);if(isNaN(k2)||k2<=toNum(km1))e.km2="KM Tiba harus > KM Berangkat.";}
     return e;
+  };
+
+  const resetForm=()=>{
+    setJM("");setNSJ("");setKat("");setKm1("");setKm2("");
+    setJT("");setJS("");setStat("Selesai");setCat("");setAD([]);setErr({});setDupWarn("");
   };
 
   const handleSubmit=async()=>{
     const errs=validate();
-    if(Object.keys(errs).length){setError(errs);return;}
-    setLoading(true);
-    try {
-      const nn=String(parseInt(nomorSJ)).padStart(4,"0");
-      const result=await apiGet({
-        action:"addSJ",jenisMobil,namaDriver:driverName,
-        assDriver:assDriver.join(", "),nomorSJ:nn,kategori,
-        km1:toNum(km1),km2:km2?toNum(km2):"",
-        jamTiba,jamSelesai,status,catatan,
-      });
+    if(Object.keys(errs).length){setErr(errs);return;}
+    setDupWarn("");setLoad(true);
+    const nn=String(parseInt(nomorSJ)).padStart(4,"0");
+    const params={action:"addSJ",jenisMobil,namaDriver:driverName,assDriver:assDriver.join(", "),nomorSJ:nn,kategori,km1:toNum(km1),km2:km2?toNum(km2):"",jamTiba,jamSelesai,status,catatan};
+
+    // Mode offline: simpan ke queue
+    if(!isOnline){
+      const q=[...getQueue(),params]; saveQueue(q); setQLen(q.length);
+      setSucc({formattedSJ:preview,timestamp:"tersimpan offline",status,kategori,jenisMobil,offline:true});
+      resetForm(); setLoad(false); return;
+    }
+
+    try{
+      const result=await apiGet(params);
       if(result.success){
-        setSuccess({formattedSJ:result.formattedSJ,timestamp:result.timestamp,status,kategori,jenisMobil});
-        setJenisMobil("");setNomorSJ("");setKategori("");
-        setKm1("");setKm2("");setJamTiba("");setJamSelesai("");
-        setStatus("Selesai");setCatatan("");setAssDriver([]);setError({});
+        setSucc({formattedSJ:result.formattedSJ,timestamp:result.timestamp,status,kategori,jenisMobil,offline:false});
+        resetForm();
+      } else if(result.isDuplicate){
+        setDupWarn(result.error||"SJ ini sudah Selesai.");
       } else {
-        setError({submit:"Gagal menyimpan: "+(result.error||"Error tidak dikenal")});
+        setErr({submit:"Gagal: "+(result.error||"Error tidak dikenal")});
       }
-    } catch(e){setError({submit:"Koneksi bermasalah. Coba lagi."});}
-    setLoading(false);
+    }catch(e){setErr({submit:"Koneksi bermasalah."});}
+    setLoad(false);
   };
 
-  return (
+  return(
     <div style={{padding:20,paddingBottom:40}}>
+      {/* Offline / queue indicator */}
+      {!isOnline&&<div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📵</span><div><p style={{margin:0,fontWeight:700,color:"#92400e",fontSize:13}}>Mode Offline</p><p style={{margin:0,fontSize:11,color:"#b45309"}}>SJ akan tersimpan & dikirim otomatis saat online</p></div></div>}
+      {isOnline&&queueLen>0&&<div style={{background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>🔄</span><p style={{margin:0,fontWeight:700,color:"#1e40af",fontSize:13}}>{queueLen} SJ offline sedang dikirim...</p></div>}
+
       <div style={{marginBottom:20}}>
         <p style={{color:"#64748b",fontSize:13,margin:0}}>{today}</p>
         <h2 style={{margin:"4px 0 0",fontSize:20,color:"#1B2A4A",fontWeight:800}}>Input Surat Jalan</h2>
       </div>
 
-      {success&&(
-        <div style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:12,padding:"14px 16px",marginBottom:20,display:"flex",alignItems:"flex-start",gap:10}}>
-          <span style={{fontSize:20}}>✅</span>
-          <div>
-            <p style={{margin:0,fontWeight:700,color:"#15803d",fontSize:13}}>{success.formattedSJ} berhasil disimpan!</p>
-            <p style={{margin:"2px 0 0",color:"#16a34a",fontSize:12}}>{success.jenisMobil} · {driverName} · {success.timestamp}</p>
-            <p style={{margin:"2px 0 0",color:"#16a34a",fontSize:12}}>{success.kategori} · {success.status}</p>
-          </div>
-        </div>
-      )}
+      {success&&(<div style={{background:success.offline?"#fef3c7":"#dcfce7",border:`1px solid ${success.offline?"#fbbf24":"#86efac"}`,borderRadius:12,padding:"14px 16px",marginBottom:20,display:"flex",alignItems:"flex-start",gap:10}}><span style={{fontSize:20}}>{success.offline?"📥":"✅"}</span><div><p style={{margin:0,fontWeight:700,color:success.offline?"#92400e":"#15803d",fontSize:13}}>{success.formattedSJ} {success.offline?"disimpan offline!":"berhasil disimpan!"}</p><p style={{margin:"2px 0 0",color:success.offline?"#b45309":"#16a34a",fontSize:12}}>{success.jenisMobil} · {driverName} · {success.timestamp}</p><p style={{margin:"2px 0 0",color:success.offline?"#b45309":"#16a34a",fontSize:12}}>{success.kategori} · {success.status}</p></div></div>)}
       {error.submit&&<div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:12,padding:"12px 16px",marginBottom:16,color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {error.submit}</div>}
+      {dupWarn&&<div style={{background:"#fef3c7",border:"2px solid #fbbf24",borderRadius:12,padding:"14px 16px",marginBottom:16}}><p style={{margin:0,fontWeight:800,color:"#92400e",fontSize:14}}>⚠️ Peringatan Duplikat</p><p style={{margin:"4px 0 0",color:"#b45309",fontSize:13}}>{dupWarn}</p><p style={{margin:"6px 0 0",color:"#64748b",fontSize:12}}>Jika SJ sudah berstatus Selesai, periksa kembali nomor SJ Anda. Nomor SJ dengan status Tunda/Kembali/Batal masih bisa diinput ulang.</p></div>}
 
       {/* Jenis Mobil */}
       <Field label="Jenis Mobil" err={error.jenisMobil}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {JENIS_MOBIL.map(jm=>{const sel=jenisMobil===jm,icon=jm==="Besar"?"🚛":"🚐";return(
-            <button key={jm} onClick={()=>{setJenisMobil(jm);setError(p=>({...p,jenisMobil:""}));}} style={{padding:"14px 10px",borderRadius:10,cursor:"pointer",border:sel?"none":`1.5px solid ${error.jenisMobil?"#f87171":"#cbd5e1"}`,background:sel?"#1B2A4A":"#fff",color:sel?"#fff":"#475569",fontSize:14,fontWeight:800,display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:sel?"0 0 0 2px #1B2A4A":undefined}}>
-              <span style={{fontSize:28}}>{icon}</span>Mobil {jm}
-            </button>
-          );})}
-        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{JENIS_MOBIL.map(jm=>{const sel=jenisMobil===jm,icon=jm==="Besar"?"🚛":"🚐";return(<button key={jm} onClick={()=>{setJM(jm);setErr(p=>({...p,jenisMobil:""}));}} style={{padding:"14px 10px",borderRadius:10,cursor:"pointer",border:sel?"none":`1.5px solid ${error.jenisMobil?"#f87171":"#cbd5e1"}`,background:sel?"#1B2A4A":"#fff",color:sel?"#fff":"#475569",fontSize:14,fontWeight:800,display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:sel?"0 0 0 2px #1B2A4A":undefined}}><span style={{fontSize:28}}>{icon}</span>Mobil {jm}</button>);})}</div>
       </Field>
 
-      {/* Ass. Driver */}
-      <Field label="Ass. Driver">
-        <MultiSelectDropdown options={assDrivers} values={assDriver} onChange={setAssDriver}/>
-      </Field>
+      <Field label="Ass. Driver"><MultiSelectDropdown options={assDrivers} values={assDriver} onChange={setAD}/></Field>
 
-      {/* Nomor SJ */}
       <Field label="Nomor Surat Jalan" err={error.nomorSJ} hint={nomorSJ?`Tersimpan sebagai: ${preview}`:"Masukkan angka 1–9999"}>
-        <div style={{position:"relative"}}>
-          <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontWeight:700,fontSize:14,letterSpacing:1,pointerEvents:"none"}}>SJ</span>
-          <input type="text" inputMode="numeric" pattern="[0-9]*" value={nomorSJ} placeholder="0001"
-            onChange={e=>{setNomorSJ(e.target.value.replace(/[^0-9]/g,""));setError(p=>({...p,nomorSJ:""}));setSuccess(null);}}
-            style={{...IS,paddingLeft:40,fontSize:22,fontWeight:800,letterSpacing:3,border:`1.5px solid ${error.nomorSJ?"#f87171":"#cbd5e1"}`}}/>
-        </div>
+        <div style={{position:"relative"}}><span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontWeight:700,fontSize:14,letterSpacing:1,pointerEvents:"none"}}>SJ</span><input type="text" inputMode="numeric" pattern="[0-9]*" value={nomorSJ} placeholder="0001" onChange={e=>{setNSJ(e.target.value.replace(/[^0-9]/g,""));setErr(p=>({...p,nomorSJ:""}));setSucc(null);setDupWarn("");}} style={{...IS,paddingLeft:40,fontSize:22,fontWeight:800,letterSpacing:3,border:`1.5px solid ${error.nomorSJ?"#f87171":"#cbd5e1"}`}}/></div>
       </Field>
 
-      {/* Kategori */}
-      <Field label="Kategori SJ" err={error.kategori}>
-        <KategoriSelector value={kategori} onChange={v=>{setKategori(v);setError(p=>({...p,kategori:""}));}} hasError={!!error.kategori}/>
-      </Field>
+      <Field label="Kategori SJ" err={error.kategori}><KategoriSelector value={kategori} onChange={v=>{setKat(v);setErr(p=>({...p,kategori:""}));}} hasError={!!error.kategori}/></Field>
 
-      {/* KM */}
       <Divider label="📍 DATA KILOMETER"/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Field label="KM Berangkat" err={error.km1}>
-          <input type="text" inputMode="numeric" pattern="[0-9]*" value={km1} placeholder="12500"
-            onChange={e=>{setKm1(e.target.value.replace(/[^0-9]/g,""));setError(p=>({...p,km1:""}));}}
-            style={{...IS,fontSize:15,fontWeight:700,border:`1.5px solid ${error.km1?"#f87171":"#cbd5e1"}`}}/>
-        </Field>
-        <Field label="KM Tiba" err={error.km2}>
-          <input type="text" inputMode="numeric" pattern="[0-9]*" value={km2} placeholder="12650"
-            onChange={e=>{setKm2(e.target.value.replace(/[^0-9]/g,""));setError(p=>({...p,km2:""}));}}
-            style={{...IS,fontSize:15,fontWeight:700,border:`1.5px solid ${error.km2?"#f87171":"#cbd5e1"}`}}/>
-        </Field>
+        <Field label="KM Berangkat" err={error.km1}><input type="text" inputMode="numeric" pattern="[0-9]*" value={km1} placeholder="12500" onChange={e=>{setKm1(e.target.value.replace(/[^0-9]/g,""));setErr(p=>({...p,km1:""}));}} style={{...IS,fontSize:15,fontWeight:700,border:`1.5px solid ${error.km1?"#f87171":"#cbd5e1"}`}}/></Field>
+        <Field label="KM Tiba" err={error.km2}><input type="text" inputMode="numeric" pattern="[0-9]*" value={km2} placeholder="12650" onChange={e=>{setKm2(e.target.value.replace(/[^0-9]/g,""));setErr(p=>({...p,km2:""}));}} style={{...IS,fontSize:15,fontWeight:700,border:`1.5px solid ${error.km2?"#f87171":"#cbd5e1"}`}}/></Field>
       </div>
-
-      {/* Jam */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:durasiPreview?6:14}}>
-        <Field label="🕐 Jam Tiba di Lokasi">
-          <input type="time" value={jamTiba} onChange={e=>setJamTiba(e.target.value)}
-            style={{...IS,fontSize:15,fontWeight:700,color:jamTiba?"#1B2A4A":"#94a3b8"}}/>
-        </Field>
-        <Field label="🏁 Jam Selesai">
-          <input type="time" value={jamSelesai} onChange={e=>setJamSelesai(e.target.value)}
-            style={{...IS,fontSize:15,fontWeight:700,color:jamSelesai?"#1B2A4A":"#94a3b8"}}/>
-        </Field>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:durPrev?6:14}}>
+        <Field label="🕐 Jam Tiba di Lokasi"><input type="time" value={jamTiba} onChange={e=>setJT(e.target.value)} style={{...IS,fontSize:15,fontWeight:700,color:jamTiba?"#1B2A4A":"#94a3b8"}}/></Field>
+        <Field label="🏁 Jam Selesai"><input type="time" value={jamSelesai} onChange={e=>setJS(e.target.value)} style={{...IS,fontSize:15,fontWeight:700,color:jamSelesai?"#1B2A4A":"#94a3b8"}}/></Field>
       </div>
-      {durasiPreview&&<p style={{color:"#16a34a",fontSize:12,fontWeight:700,marginBottom:14}}>⏱ Durasi pembongkaran: {durasiPreview}</p>}
+      {durPrev&&<p style={{color:"#16a34a",fontSize:12,fontWeight:700,marginBottom:14}}>⏱ Durasi pembongkaran: {durPrev}</p>}
 
-      {/* Status */}
       <Divider label="📋 STATUS PENGIRIMAN"/>
-      <Field label="Status saat ini"><StatusSelector value={status} onChange={setStatus}/></Field>
+      <Field label="Status saat ini"><StatusSelector value={status} onChange={setStat}/></Field>
+      <Field label="Catatan"><textarea value={catatan} onChange={e=>setCat(e.target.value)} placeholder="Contoh: Tunda karena macet, barang kurang, dll..." rows={3} style={{...IS,resize:"none",fontSize:14,lineHeight:1.5}}/></Field>
 
-      {/* Catatan */}
-      <Field label="Catatan">
-        <textarea value={catatan} onChange={e=>setCatatan(e.target.value)}
-          placeholder="Contoh: Tunda karena macet, barang kurang, dll..."
-          rows={3} style={{...IS,resize:"none",fontSize:14,lineHeight:1.5}}/>
-      </Field>
-
-      <button onClick={handleSubmit} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",letterSpacing:0.5,boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>
-        {loading?"⏳ Menyimpan...":"Submit SJ"}
-      </button>
+      <button onClick={handleSubmit} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",letterSpacing:0.5,boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>{loading?"⏳ Menyimpan...":isOnline?"Submit SJ":"📥 Simpan Offline"}</button>
       <p style={{textAlign:"center",color:"#94a3b8",fontSize:12,marginTop:12}}>Punya lebih dari 1 SJ? Submit ulang untuk SJ berikutnya.</p>
     </div>
   );
@@ -450,75 +274,58 @@ function DriverView({assDrivers,driverName}) {
 // ══════════════════════════════════════════════════════════════
 // ADMIN MONITOR VIEW
 // ══════════════════════════════════════════════════════════════
-function AdminView() {
-  const [sjList,setSjList]                 = useState([]);
-  const [filterStatus,setFilterStatus]     = useState("Semua");
-  const [editId,setEditId]                 = useState(null);
-  const [editStatus,setEditStatus]         = useState("");
-  const [editCatatan,setEditCatatan]       = useState("");
-  const [editKm2,setEditKm2]               = useState("");
-  const [editJamTiba,setEditJamTiba]       = useState("");
-  const [editJamSelesai,setEditJamSelesai] = useState("");
-  const [searchQ,setSearchQ]               = useState("");
-  const [loading,setLoading]               = useState(false);
-  const [saving,setSaving]                 = useState(false);
-  const [errorMsg,setErrorMsg]             = useState("");
+function AdminView(){
+  const[sjList,setSL]=useState([]),[filterStat,setFS]=useState("Semua"),
+    [editId,setEI]=useState(null),[editStat,setES]=useState(""),
+    [editCat,setEC]=useState(""),[editKm2,setEK]=useState(""),
+    [editJT,setEJT]=useState(""),[editJS,setEJS]=useState(""),
+    [searchQ,setSQ]=useState(""),[loading,setLoad]=useState(false),
+    [saving,setSav]=useState(false),[errMsg,setErrMsg]=useState("");
 
-  const loadData=async()=>{
-    setLoading(true);setErrorMsg("");
-    try {
-      const r=await apiGet({action:"getSJList"});
-      if(r.success)setSjList(r.data||[]);
-      else setErrorMsg("Gagal memuat: "+(r.error||"Error tidak dikenal"));
-    } catch(e){setErrorMsg("Koneksi bermasalah. Ketuk Refresh.");}
-    setLoading(false);
+  const load=async()=>{
+    setLoad(true);setErrMsg("");
+    try{const r=await apiGet({action:"getSJList"});if(r.success)setSL(r.data||[]);else setErrMsg("Gagal: "+r.error);}
+    catch(e){setErrMsg("Koneksi bermasalah.");}
+    setLoad(false);
   };
-  useEffect(()=>{loadData();},[]);
+  useEffect(()=>{load();},[]);
 
   const filtered=sjList.filter(sj=>{
-    const mS=filterStatus==="Semua"||sj.status===filterStatus;
+    const mS=filterStat==="Semua"||sj.status===filterStat;
     const q=searchQ.toLowerCase();
-    const mQ=String(sj.nomorSJ||"").toLowerCase().includes(q)||String(sj.namaDriver||"").toLowerCase().includes(q)||String(sj.kategori||"").toLowerCase().includes(q)||String(sj.jenisMobil||"").toLowerCase().includes(q);
-    return mS&&mQ;
+    return mS&&(String(sj.nomorSJ||"").toLowerCase().includes(q)||String(sj.namaDriver||"").toLowerCase().includes(q)||String(sj.kategori||"").toLowerCase().includes(q)||String(sj.jenisMobil||"").toLowerCase().includes(q));
   });
 
-  const openEdit=(sj)=>{setEditId(sj.id);setEditStatus(sj.status);setEditCatatan(sj.catatan||"");setEditKm2(sj.km2?String(sj.km2):"");setEditJamTiba(sj.jamTiba||"");setEditJamSelesai(sj.jamSelesai||"");};
+  const openEdit=sj=>{setEI(sj.id);setES(sj.status);setEC(sj.catatan||"");setEK(sj.km2?String(sj.km2):"");setEJT(sj.jamTiba||"");setEJS(sj.jamSelesai||"");};
   const saveEdit=async()=>{
-    setSaving(true);
-    try {
-      const r=await apiGet({action:"updateStatus",id:editId,status:editStatus,catatan:editCatatan,km2:editKm2?toNum(editKm2):"",jamTiba:editJamTiba,jamSelesai:editJamSelesai});
-      if(r.success){setSjList(prev=>prev.map(sj=>sj.id===editId?{...sj,status:editStatus,catatan:editCatatan,km2:editKm2?toNum(editKm2):sj.km2,jamTiba:editJamTiba,jamSelesai:editJamSelesai}:sj));setEditId(null);}
-    } catch(_){}
-    setSaving(false);
+    setSav(true);
+    try{const r=await apiGet({action:"updateStatus",id:editId,status:editStat,catatan:editCat,km2:editKm2?toNum(editKm2):"",jamTiba:editJT,jamSelesai:editJS});
+      if(r.success){setSL(prev=>prev.map(sj=>sj.id===editId?{...sj,status:editStat,catatan:editCat,km2:editKm2?toNum(editKm2):sj.km2,jamTiba:editJT,jamSelesai:editJS}:sj));setEI(null);}}
+    catch(_){}
+    setSav(false);
   };
-  const countBy=(s)=>sjList.filter(sj=>sj.status===s).length;
-  const KATMETA={"Keramik":{color:"#1B2A4A",bg:"#e8eaf6"},"Non-Keramik":{color:"#0f766e",bg:"#ccfbf1"},"Campuran":{color:"#7c3aed",bg:"#ede9fe"}};
 
-  return (
+  const cBy=s=>sjList.filter(sj=>sj.status===s).length;
+  const KM={"Keramik":{color:"#1B2A4A",bg:"#e8eaf6"},"Non-Keramik":{color:"#0f766e",bg:"#ccfbf1"},"Campuran":{color:"#7c3aed",bg:"#ede9fe"}};
+
+  return(
     <div style={{padding:20}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
         <h2 style={{margin:0,fontSize:20,color:"#1B2A4A",fontWeight:800}}>Monitor Surat Jalan</h2>
-        <button onClick={loadData} style={{padding:"6px 12px",background:"#f1f5f9",border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,color:"#475569"}}>🔄 Refresh</button>
+        <button onClick={load} style={{padding:"6px 12px",background:"#f1f5f9",border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,color:"#475569"}}>🔄 Refresh</button>
       </div>
-
-      {errorMsg&&<div style={{background:"#fee2e2",borderRadius:10,padding:"12px 16px",marginBottom:16,color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {errorMsg}</div>}
-
+      {errMsg&&<div style={{background:"#fee2e2",borderRadius:10,padding:"12px 16px",marginBottom:16,color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {errMsg}</div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
-        {[{label:"Total",value:sjList.length,color:"#1B2A4A",bg:"#f1f5f9"},{label:"Tunda",value:countBy("Tunda"),color:"#d97706",bg:"#fef3c7"},{label:"Kembali",value:countBy("Kembali"),color:"#ea580c",bg:"#ffedd5"}].map(c=>(
-          <div key={c.label} style={{background:c.bg,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
-            <p style={{margin:0,fontSize:22,fontWeight:900,color:c.color}}>{c.value}</p>
-            <p style={{margin:0,fontSize:11,color:c.color,fontWeight:600}}>{c.label}</p>
-          </div>
+        {[{l:"Total",v:sjList.length,c:"#1B2A4A",b:"#f1f5f9"},{l:"Tunda",v:cBy("Tunda"),c:"#d97706",b:"#fef3c7"},{l:"Kembali",v:cBy("Kembali"),c:"#ea580c",b:"#ffedd5"}].map(x=>(
+          <div key={x.l} style={{background:x.b,borderRadius:10,padding:"10px 12px",textAlign:"center"}}><p style={{margin:0,fontSize:22,fontWeight:900,color:x.c}}>{x.v}</p><p style={{margin:0,fontSize:11,color:x.c,fontWeight:600}}>{x.l}</p></div>
         ))}
       </div>
-
-      <input type="text" placeholder="Cari SJ, driver, kategori..." value={searchQ} onChange={e=>setSearchQ(e.target.value)} style={{...IS,fontSize:13,marginBottom:12,border:"1.5px solid #cbd5e1"}}/>
+      <input type="text" placeholder="Cari SJ, driver, kategori..." value={searchQ} onChange={e=>setSQ(e.target.value)} style={{...IS,fontSize:13,marginBottom:12,border:"1.5px solid #cbd5e1"}}/>
       <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4,marginBottom:16}}>
         {["Semua",...Object.keys(STATUS_CONFIG)].map(s=>(
-          <button key={s} onClick={()=>setFilterStatus(s)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:filterStatus===s?"#1B2A4A":"#f1f5f9",color:filterStatus===s?"#fff":"#64748b"}}>{s}</button>
+          <button key={s} onClick={()=>setFS(s)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:filterStat===s?"#1B2A4A":"#f1f5f9",color:filterStat===s?"#fff":"#64748b"}}>{s}</button>
         ))}
       </div>
-
       {loading?<div style={{textAlign:"center",padding:"40px 20px",color:"#94a3b8"}}><p style={{fontSize:32}}>⏳</p><p>Memuat data...</p></div>
       :filtered.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:"#94a3b8"}}><p style={{fontSize:32}}>📋</p><p>Belum ada SJ.</p></div>
       :filtered.map(sj=>(
@@ -527,22 +334,16 @@ function AdminView() {
             <div>
               <p style={{margin:"0 0 10px",fontWeight:800,color:"#1B2A4A"}}>{sj.nomorSJ}</p>
               <label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:6}}>Status</label>
-              <StatusSelector value={editStatus} onChange={setEditStatus}/>
-              <div style={{marginTop:10,marginBottom:8}}>
-                <label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 KM Tiba</label>
-                <input type="text" inputMode="numeric" value={editKm2} placeholder="KM tiba" onChange={e=>setEditKm2(e.target.value.replace(/[^0-9]/g,""))} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/>
-              </div>
+              <StatusSelector value={editStat} onChange={setES}/>
+              <div style={{marginTop:10,marginBottom:8}}><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 KM Tiba</label><input type="text" inputMode="numeric" value={editKm2} placeholder="KM tiba" onChange={e=>setEK(e.target.value.replace(/[^0-9]/g,""))} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🕐 Jam Tiba</label><input type="time" value={editJamTiba} onChange={e=>setEditJamTiba(e.target.value)} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
-                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 Jam Selesai</label><input type="time" value={editJamSelesai} onChange={e=>setEditJamSelesai(e.target.value)} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
+                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🕐 Jam Tiba</label><input type="time" value={editJT} onChange={e=>setEJT(e.target.value)} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
+                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 Jam Selesai</label><input type="time" value={editJS} onChange={e=>setEJS(e.target.value)} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
               </div>
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Catatan</label>
-                <textarea value={editCatatan} onChange={e=>setEditCatatan(e.target.value)} rows={2} style={{...IS,resize:"none",fontSize:14,border:"1.5px solid #cbd5e1"}}/>
-              </div>
+              <div style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Catatan</label><textarea value={editCat} onChange={e=>setEC(e.target.value)} rows={2} style={{...IS,resize:"none",fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:"10px",background:saving?"#94a3b8":"#1B2A4A",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:saving?"default":"pointer",fontSize:13}}>{saving?"Menyimpan...":"Simpan"}</button>
-                <button onClick={()=>setEditId(null)} style={{flex:1,padding:"10px",background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:13}}>Batal</button>
+                <button onClick={()=>setEI(null)} style={{flex:1,padding:"10px",background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:13}}>Batal</button>
               </div>
             </div>
           ):(
@@ -552,25 +353,13 @@ function AdminView() {
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
                     <span style={{fontSize:13,fontWeight:900,color:"#1B2A4A"}}>{sj.nomorSJ}</span>
                     <StatusBadge status={sj.status}/>
-                    {sj.kategori&&<span style={{background:(KATMETA[sj.kategori]||{}).bg||"#f1f5f9",color:(KATMETA[sj.kategori]||{}).color||"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>{sj.kategori}</span>}
+                    {sj.kategori&&<span style={{background:(KM[sj.kategori]||{}).bg||"#f1f5f9",color:(KM[sj.kategori]||{}).color||"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>{sj.kategori}</span>}
                     {sj.jenisMobil&&<span style={{background:"#f1f5f9",color:"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>{sj.jenisMobil==="Besar"?"🚛":"🚐"} {sj.jenisMobil}</span>}
                   </div>
                   <p style={{margin:0,fontSize:12,color:"#64748b"}}>{sj.namaDriver}{sj.assDriver?<span style={{color:"#94a3b8"}}> + {sj.assDriver}</span>:null}{" · "}{sj.timestamp}</p>
                   <KmRow km1={sj.km1} km2={sj.km2}/>
-                  {(sj.jamTiba||sj.jamSelesai)&&(
-                    <p style={{margin:"4px 0 0",fontSize:12,color:"#475569"}}>
-                      {sj.jamTiba?<>🕐 <strong>{sj.jamTiba}</strong></>:""}
-                      {sj.jamTiba&&sj.jamSelesai?" · ":""}
-                      {sj.jamSelesai?<>🏁 <strong>{sj.jamSelesai}</strong></>:""}
-                      {sj.durasi?<> · ⏱ <strong>{sj.durasi}</strong></>:""}
-                    </p>
-                  )}
-                  {/* Catatan merah */}
-                  {sj.catatan&&(
-                    <p style={{margin:"6px 0 0",fontSize:12,color:"#dc2626",fontWeight:700,background:"#fee2e2",padding:"5px 10px",borderRadius:8,display:"inline-flex",alignItems:"center",gap:4}}>
-                      ⚠️ {sj.catatan}
-                    </p>
-                  )}
+                  {(sj.jamTiba||sj.jamSelesai)&&<p style={{margin:"4px 0 0",fontSize:12,color:"#475569"}}>{sj.jamTiba?<>🕐 <strong>{sj.jamTiba}</strong></>:""}{sj.jamTiba&&sj.jamSelesai?" · ":""}{sj.jamSelesai?<>🏁 <strong>{sj.jamSelesai}</strong></>:""}{sj.durasi?<> · ⏱ <strong>{sj.durasi}</strong></>:""}</p>}
+                  <CatatanBadge catatan={sj.catatan} status={sj.status}/>
                 </div>
                 <button onClick={()=>openEdit(sj)} style={{padding:"8px 12px",background:"#f1f5f9",border:"none",borderRadius:8,cursor:"pointer",color:"#475569",fontSize:12,fontWeight:700,marginLeft:8,flexShrink:0}}>Edit</button>
               </div>
@@ -585,117 +374,134 @@ function AdminView() {
 // ══════════════════════════════════════════════════════════════
 // REKAP HARIAN VIEW
 // ══════════════════════════════════════════════════════════════
-function RekapView() {
-  const [tanggal,setTanggal] = useState(getTodayStr());
-  const [rekap,setRekap]     = useState(null);
-  const [loading,setLoading] = useState(false);
-  const [errorMsg,setErrorMsg]= useState("");
-
-  const loadRekap=async(tgl)=>{
-    setLoading(true);setErrorMsg("");setRekap(null);
-    try {
-      const r=await apiGet({action:"getRekapHarian",tanggal:tgl});
-      if(r.success)setRekap(r.data);
-      else setErrorMsg("Gagal memuat rekap: "+(r.error||""));
-    } catch(e){setErrorMsg("Koneksi bermasalah.");}
-    setLoading(false);
-  };
-
-  useEffect(()=>{loadRekap(tanggal);},[]);
-
-  const handleDateChange=(e)=>{
-    const tgl=fromDateInput(e.target.value);
-    setTanggal(tgl);loadRekap(tgl);
-  };
-
-  const STATCOLOR={Selesai:"#16a34a",Tunda:"#d97706",Kembali:"#ea580c",Batal:"#dc2626"};
-  const KATCOLOR={"Keramik":"#1B2A4A","Non-Keramik":"#0f766e","Campuran":"#7c3aed"};
-
-  return (
+function RekapView(){
+  const[tanggal,setT]=useState(getTodayStr()),[rekap,setR]=useState(null),
+    [loading,setLoad]=useState(false),[errMsg,setEM]=useState("");
+  const load=async(tgl)=>{setLoad(true);setEM("");setR(null);try{const r=await apiGet({action:"getRekapHarian",tanggal:tgl});if(r.success)setR(r.data);else setEM("Gagal: "+r.error);}catch(e){setEM("Koneksi bermasalah.");}setLoad(false);};
+  useEffect(()=>{load(tanggal);},[]);
+  const SC={Selesai:"#16a34a",Tunda:"#d97706",Kembali:"#ea580c",Batal:"#dc2626"};
+  const KC={"Keramik":"#1B2A4A","Non-Keramik":"#0f766e","Campuran":"#7c3aed"};
+  return(
     <div style={{padding:20}}>
-      <div style={{marginBottom:20}}>
-        <h2 style={{margin:"0 0 4px",fontSize:20,color:"#1B2A4A",fontWeight:800}}>Rekap Harian</h2>
-        <p style={{margin:0,fontSize:13,color:"#64748b"}}>Ringkasan pengiriman per tanggal</p>
-      </div>
-
-      {/* Date picker */}
+      <h2 style={{margin:"0 0 4px",fontSize:20,color:"#1B2A4A",fontWeight:800}}>Rekap Harian</h2>
+      <p style={{margin:"0 0 20px",fontSize:13,color:"#64748b"}}>Ringkasan pengiriman per tanggal</p>
       <div style={{display:"flex",gap:8,marginBottom:20}}>
-        <input type="date" value={toDateInput(tanggal)} onChange={handleDateChange}
-          style={{...IS,flex:1,fontSize:14,fontWeight:700}}/>
-        <button onClick={()=>loadRekap(tanggal)} style={{padding:"12px 16px",background:"#1B2A4A",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>🔄 Muat</button>
+        <input type="date" value={toDateInput(tanggal)} onChange={e=>{const t=fromDateInput(e.target.value);setT(t);load(t);}} style={{...IS,flex:1,fontSize:14,fontWeight:700}}/>
+        <button onClick={()=>load(tanggal)} style={{padding:"12px 16px",background:"#1B2A4A",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>🔄 Muat</button>
       </div>
-
       {loading&&<div style={{textAlign:"center",padding:"40px 20px",color:"#94a3b8"}}><p style={{fontSize:32}}>⏳</p><p>Memuat rekap...</p></div>}
-      {errorMsg&&<div style={{background:"#fee2e2",borderRadius:10,padding:"12px 16px",color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {errorMsg}</div>}
-
+      {errMsg&&<div style={{background:"#fee2e2",borderRadius:10,padding:"12px 16px",color:"#dc2626",fontSize:13,fontWeight:600}}>⚠️ {errMsg}</div>}
       {rekap&&!loading&&(
         <>
-          {/* Header card */}
           <div style={{background:"linear-gradient(135deg,#1B2A4A,#2d4a7a)",borderRadius:12,padding:"16px",color:"#fff",marginBottom:16}}>
             <p style={{margin:0,fontSize:13,color:"#93c5fd",fontWeight:600}}>{tanggal}</p>
             <p style={{margin:"4px 0 0",fontSize:40,fontWeight:900}}>{rekap.totalSJ}</p>
             <p style={{margin:"2px 0 0",fontSize:13,color:"#93c5fd"}}>Total Surat Jalan</p>
           </div>
-
-          {rekap.totalSJ===0?(
-            <div style={{textAlign:"center",padding:"20px",color:"#94a3b8"}}>
-              <p style={{fontSize:32}}>📋</p>
-              <p>Tidak ada SJ pada tanggal ini.</p>
-            </div>
-          ):(
+          {rekap.totalSJ===0?<div style={{textAlign:"center",padding:"20px",color:"#94a3b8"}}><p style={{fontSize:32}}>📋</p><p>Tidak ada SJ pada tanggal ini.</p></div>:(
             <>
-              {/* Status breakdown */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
                 {Object.entries(rekap.byStatus||{}).map(([s,n])=>(
-                  <div key={s} style={{background:"#fff",borderRadius:10,padding:"12px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}>
-                    <p style={{margin:0,fontSize:24,fontWeight:900,color:STATCOLOR[s]||"#475569"}}>{n}</p>
-                    <p style={{margin:"2px 0 0",fontSize:12,color:STATCOLOR[s]||"#64748b",fontWeight:700}}>{STATUS_CONFIG[s]?.icon||"•"} {s}</p>
-                  </div>
+                  <div key={s} style={{background:"#fff",borderRadius:10,padding:"12px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><p style={{margin:0,fontSize:24,fontWeight:900,color:SC[s]||"#475569"}}>{n}</p><p style={{margin:"2px 0 0",fontSize:12,color:SC[s]||"#64748b",fontWeight:700}}>{STATUS_CONFIG[s]?.icon||"•"} {s}</p></div>
                 ))}
               </div>
-
-              {/* Per Driver */}
               <h3 style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>📊 Per Driver</h3>
               {(rekap.byDriver||[]).map(d=>(
                 <div key={d.nama} style={{background:"#fff",borderRadius:12,padding:"14px 16px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1.5px solid #f1f5f9"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <span style={{fontWeight:800,color:"#1B2A4A",fontSize:14}}>🙋 {d.nama}</span>
-                    <span style={{background:"#1B2A4A",color:"#fff",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>{d.totalSJ} SJ</span>
-                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontWeight:800,color:"#1B2A4A",fontSize:14}}>🙋 {d.nama}</span><span style={{background:"#1B2A4A",color:"#fff",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>{d.totalSJ} SJ</span></div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {d.totalKM>0&&<span style={{background:"#dbeafe",color:"#1d4ed8",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>📏 {d.totalKM.toLocaleString("id-ID")} km</span>}
-                    {Object.entries(d.byStatus||{}).map(([s,n])=>(
-                      <span key={s} style={{background:STATUS_CONFIG[s]?.bg||"#f1f5f9",color:STATCOLOR[s]||"#475569",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>
-                        {STATUS_CONFIG[s]?.icon||"•"} {s}: {n}
-                      </span>
-                    ))}
+                    {Object.entries(d.byStatus||{}).map(([s,n])=><span key={s} style={{background:STATUS_CONFIG[s]?.bg||"#f1f5f9",color:SC[s]||"#475569",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>{STATUS_CONFIG[s]?.icon||"•"} {s}: {n}</span>)}
                   </div>
                 </div>
               ))}
-
-              {/* Kategori & Mobil */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:16}}>
-                <div style={{background:"#fff",borderRadius:12,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}>
-                  <h3 style={{fontSize:13,fontWeight:800,color:"#374151",margin:"0 0 10px"}}>📦 Kategori</h3>
-                  {Object.entries(rekap.byKategori||{}).length===0?<p style={{fontSize:12,color:"#94a3b8",margin:0}}>-</p>
-                  :Object.entries(rekap.byKategori||{}).map(([k,n])=>(
-                    <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={{fontSize:12,fontWeight:700,color:KATCOLOR[k]||"#475569"}}>{k}</span>
-                      <span style={{fontSize:16,fontWeight:900,color:KATCOLOR[k]||"#475569"}}>{n}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{background:"#fff",borderRadius:12,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}>
-                  <h3 style={{fontSize:13,fontWeight:800,color:"#374151",margin:"0 0 10px"}}>🚛 Jenis Mobil</h3>
-                  {Object.entries(rekap.byMobil||{}).length===0?<p style={{fontSize:12,color:"#94a3b8",margin:0}}>-</p>
-                  :Object.entries(rekap.byMobil||{}).map(([m,n])=>(
-                    <div key={m} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={{fontSize:12,fontWeight:700,color:"#475569"}}>{m==="Besar"?"🚛":"🚐"} {m}</span>
-                      <span style={{fontSize:16,fontWeight:900,color:"#1B2A4A"}}>{n}</span>
-                    </div>
-                  ))}
-                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><h3 style={{fontSize:13,fontWeight:800,color:"#374151",margin:"0 0 10px"}}>📦 Kategori</h3>{Object.entries(rekap.byKategori||{}).length===0?<p style={{fontSize:12,color:"#94a3b8",margin:0}}>-</p>:Object.entries(rekap.byKategori||{}).map(([k,n])=><div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{fontSize:12,fontWeight:700,color:KC[k]||"#475569"}}>{k}</span><span style={{fontSize:16,fontWeight:900,color:KC[k]||"#475569"}}>{n}</span></div>)}</div>
+                <div style={{background:"#fff",borderRadius:12,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><h3 style={{fontSize:13,fontWeight:800,color:"#374151",margin:"0 0 10px"}}>🚛 Jenis Mobil</h3>{Object.entries(rekap.byMobil||{}).length===0?<p style={{fontSize:12,color:"#94a3b8",margin:0}}>-</p>:Object.entries(rekap.byMobil||{}).map(([m,n])=><div key={m} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{fontSize:12,fontWeight:700,color:"#475569"}}>{m==="Besar"?"🚛":"🚐"} {m}</span><span style={{fontSize:16,fontWeight:900,color:"#1B2A4A"}}>{n}</span></div>)}</div>
               </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// RIWAYAT PER DRIVER
+// ══════════════════════════════════════════════════════════════
+function RiwayatView({userList}){
+  const drivers=[...DEFAULT_DRIVERS,...(userList?.drivers||[])].filter((v,i,a)=>a.indexOf(v)===i);
+  const[selDriver,setSD]=useState(""),[dari,setDari]=useState(toDateInput(getTodayStr().replace(/(\d+)\/(\d+)\/(\d+)/,"$3-$2-$1").replace(/(\d{4})-(\d{2})-(\d{2})/,(_,y,m)=>`${y}-${m}-01`))),[sampai,setSampai]=useState(toDateInput(getTodayStr())),
+    [data,setData]=useState(null),[loading,setLoad]=useState(false),[errMsg,setEM]=useState("");
+
+  const load=async()=>{
+    if(!selDriver){setEM("Pilih driver terlebih dahulu.");return;}
+    setLoad(true);setEM("");setData(null);
+    try{const r=await apiGet({action:"getRiwayatDriver",namaDriver:selDriver,dari:dari.replace(/-/g,'-'),sampai:sampai.replace(/-/g,'-')});
+      if(r.success)setData(r.data);else setEM("Gagal: "+r.error);}
+    catch(e){setEM("Koneksi bermasalah.");}
+    setLoad(false);
+  };
+
+  const SC={Selesai:"#16a34a",Tunda:"#d97706",Kembali:"#ea580c",Batal:"#dc2626"};
+  const KM={"Keramik":{color:"#1B2A4A",bg:"#e8eaf6"},"Non-Keramik":{color:"#0f766e",bg:"#ccfbf1"},"Campuran":{color:"#7c3aed",bg:"#ede9fe"}};
+
+  return(
+    <div style={{padding:20}}>
+      <h2 style={{margin:"0 0 4px",fontSize:20,color:"#1B2A4A",fontWeight:800}}>Riwayat Driver</h2>
+      <p style={{margin:"0 0 20px",fontSize:13,color:"#64748b"}}>Filter SJ per driver & periode</p>
+
+      {/* Filter */}
+      <div style={{background:"#fff",borderRadius:12,padding:"16px",marginBottom:20,boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}>
+        <Field label="Nama Driver">
+          <select value={selDriver} onChange={e=>setSD(e.target.value)} style={{...IS,...ARW,color:selDriver?"#1B2A4A":"#94a3b8"}}>
+            <option value="">-- Pilih Driver --</option>
+            {drivers.map(d=><option key={d} value={d}>{d}</option>)}
+          </select>
+        </Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          <Field label="Dari Tanggal"><input type="date" value={dari} onChange={e=>setDari(e.target.value)} style={{...IS,fontSize:14}}/></Field>
+          <Field label="Sampai Tanggal"><input type="date" value={sampai} onChange={e=>setSampai(e.target.value)} style={{...IS,fontSize:14}}/></Field>
+        </div>
+        <button onClick={load} disabled={loading} style={{width:"100%",padding:"12px",background:loading?"#94a3b8":"#1B2A4A",color:"#fff",border:"none",borderRadius:10,fontWeight:800,cursor:loading?"default":"pointer",fontSize:14}}>{loading?"⏳ Memuat...":"🔍 Cari Riwayat"}</button>
+        {errMsg&&<p style={{color:"#dc2626",fontSize:12,marginTop:8,margin:0}}>{errMsg}</p>}
+      </div>
+
+      {data&&!loading&&(
+        <>
+          {/* Summary */}
+          <div style={{background:"linear-gradient(135deg,#1B2A4A,#2d4a7a)",borderRadius:12,padding:"16px",color:"#fff",marginBottom:16}}>
+            <p style={{margin:0,fontSize:13,color:"#93c5fd",fontWeight:600}}>🙋 {selDriver}</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:8}}>
+              <div><p style={{margin:0,fontSize:32,fontWeight:900}}>{data.totalSJ}</p><p style={{margin:0,fontSize:12,color:"#93c5fd"}}>Total SJ</p></div>
+              <div><p style={{margin:0,fontSize:32,fontWeight:900}}>{(data.totalKM||0).toLocaleString("id-ID")}</p><p style={{margin:0,fontSize:12,color:"#93c5fd"}}>Total KM</p></div>
+            </div>
+          </div>
+
+          {/* By status */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
+            {Object.entries(data.byStatus||{}).map(([s,n])=>(
+              <div key={s} style={{background:"#fff",borderRadius:10,padding:"10px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}}><p style={{margin:0,fontSize:20,fontWeight:900,color:SC[s]||"#475569"}}>{n}</p><p style={{margin:"2px 0 0",fontSize:11,color:SC[s]||"#64748b",fontWeight:700}}>{STATUS_CONFIG[s]?.icon||"•"} {s}</p></div>
+            ))}
+          </div>
+
+          {data.totalSJ===0?<div style={{textAlign:"center",padding:"20px",color:"#94a3b8"}}><p style={{fontSize:32}}>📋</p><p>Tidak ada SJ pada periode ini.</p></div>:(
+            <>
+              <h3 style={{fontSize:14,fontWeight:800,color:"#374151",marginBottom:10}}>📋 Daftar SJ</h3>
+              {(data.rows||[]).map(sj=>(
+                <div key={sj.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1.5px solid #f1f5f9"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                    <span style={{fontSize:13,fontWeight:900,color:"#1B2A4A"}}>{sj.nomorSJ}</span>
+                    <StatusBadge status={sj.status}/>
+                    {sj.kategori&&<span style={{background:(KM[sj.kategori]||{}).bg||"#f1f5f9",color:(KM[sj.kategori]||{}).color||"#475569",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:700}}>{sj.kategori}</span>}
+                  </div>
+                  <p style={{margin:0,fontSize:12,color:"#64748b"}}>{sj.timestamp}</p>
+                  <KmRow km1={sj.km1} km2={sj.km2}/>
+                  {(sj.jamTiba||sj.jamSelesai)&&<p style={{margin:"3px 0 0",fontSize:12,color:"#475569"}}>{sj.jamTiba?<>🕐 <strong>{sj.jamTiba}</strong></>:""}{sj.jamTiba&&sj.jamSelesai?" · ":""}{sj.jamSelesai?<>🏁 <strong>{sj.jamSelesai}</strong></>:""}{sj.durasi?<> · ⏱ <strong>{sj.durasi}</strong></>:""}</p>}
+                  <CatatanBadge catatan={sj.catatan} status={sj.status}/>
+                </div>
+              ))}
             </>
           )}
         </>
@@ -707,27 +513,23 @@ function RekapView() {
 // ══════════════════════════════════════════════════════════════
 // APP ROOT
 // ══════════════════════════════════════════════════════════════
-export default function App() {
-  const [session,    setSession]    = useState(null);
-  const [adminTab,   setAdminTab]   = useState("monitor");
-  const [userList,   setUserList]   = useState(null);
-  const [assDrivers, setAssDrivers] = useState(DEFAULT_ASS_DRIVERS);
+export default function App(){
+  const[session,setSess]=useState(null),[adminTab,setTab]=useState("monitor"),
+    [userList,setUL]=useState(null),[assDrivers,setAD]=useState(DEFAULT_ASS);
 
   useEffect(()=>{
-    apiGet({action:"getUserList"}).then(r=>{if(r.success)setUserList(r.data);}).catch(()=>{});
-    apiGet({action:"getAssDriverList"}).then(r=>{if(r.success&&r.data?.length)setAssDrivers(r.data);}).catch(()=>{});
+    apiGet({action:"getUserList"}).then(r=>{if(r.success)setUL(r.data);}).catch(()=>{});
+    apiGet({action:"getAssDriverList"}).then(r=>{if(r.success&&r.data?.length)setAD(r.data);}).catch(()=>{});
   },[]);
 
-  const handleLogout=()=>{setSession(null);setAdminTab("monitor");};
+  const isAO=session?.role==="admin"||session?.role==="owner";
+  const RL={driver:"🙋 Driver",admin:"📋 Admin",owner:"👑 Owner"};
+  const RC={driver:"#1B2A4A",admin:"#0f766e",owner:"#7c3aed"};
 
-  const ROLE_LABEL={ driver:"🙋 Driver", admin:"📋 Admin", owner:"👑 Owner" };
-  const ROLE_COLOR={ driver:"#1B2A4A", admin:"#0f766e", owner:"#7c3aed" };
-  const isAdminOrOwner = session?.role==="admin"||session?.role==="owner";
+  if(!session) return <LoginScreen userList={userList} onLogin={setSess}/>;
 
-  if(!session) return <LoginScreen userList={userList} onLogin={setSession}/>;
-
-  return (
-    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f8fafc",fontFamily:"'Inter',system-ui,sans-serif",paddingBottom:isAdminOrOwner?80:20}}>
+  return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:"#f8fafc",fontFamily:"'Inter',system-ui,sans-serif",paddingBottom:isAO?80:20}}>
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1B2A4A 0%,#2d4a7a 100%)",padding:"14px 20px",color:"#fff",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -735,29 +537,29 @@ export default function App() {
           <div>
             <h1 style={{margin:0,fontSize:15,fontWeight:900,letterSpacing:0.3}}>Rekap Surat Jalan</h1>
             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-              <span style={{fontSize:10,background:ROLE_COLOR[session.role]||"#475569",color:"#fff",padding:"1px 6px",borderRadius:10,fontWeight:700}}>{ROLE_LABEL[session.role]||session.role}</span>
+              <span style={{fontSize:10,background:RC[session.role]||"#475569",color:"#fff",padding:"1px 6px",borderRadius:10,fontWeight:700}}>{RL[session.role]||session.role}</span>
               <span style={{fontSize:10,color:"#93c5fd"}}>{session.name}</span>
             </div>
           </div>
         </div>
-        <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>Keluar</button>
+        <button onClick={()=>{setSess(null);setTab("monitor");}} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700}}>Keluar</button>
       </div>
 
       {/* Content */}
       {session.role==="driver"
-        ? <DriverView assDrivers={assDrivers} driverName={session.name}/>
-        : adminTab==="monitor"
-          ? <AdminView/>
-          : <RekapView/>
+        ?<DriverView assDrivers={assDrivers} driverName={session.name}/>
+        :adminTab==="monitor"?<AdminView/>
+        :adminTab==="rekap"?<RekapView/>
+        :<RiwayatView userList={userList}/>
       }
 
-      {/* Tab bar — Admin & Owner */}
-      {isAdminOrOwner&&(
-        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"#fff",borderTop:"1px solid #e2e8f0",display:"grid",gridTemplateColumns:"1fr 1fr",boxShadow:"0 -4px 12px rgba(0,0,0,0.08)"}}>
-          {[{key:"monitor",icon:"📋",label:"Monitor"},{key:"rekap",icon:"📊",label:"Rekap Harian"}].map(tab=>(
-            <button key={tab.key} onClick={()=>setAdminTab(tab.key)} style={{padding:"12px 8px 10px",border:"none",background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:adminTab===tab.key?"#1B2A4A":"#94a3b8",borderTop:adminTab===tab.key?"2.5px solid #1B2A4A":"2.5px solid transparent"}}>
-              <span style={{fontSize:20}}>{tab.icon}</span>
-              <span style={{fontSize:11,fontWeight:700}}>{tab.label}</span>
+      {/* Tab bar Admin/Owner */}
+      {isAO&&(
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"#fff",borderTop:"1px solid #e2e8f0",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",boxShadow:"0 -4px 12px rgba(0,0,0,0.08)"}}>
+          {[{key:"monitor",icon:"📋",label:"Monitor"},{key:"rekap",icon:"📊",label:"Rekap"},{key:"riwayat",icon:"🔍",label:"Riwayat"}].map(t=>(
+            <button key={t.key} onClick={()=>setTab(t.key)} style={{padding:"12px 8px 10px",border:"none",background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:adminTab===t.key?"#1B2A4A":"#94a3b8",borderTop:adminTab===t.key?"2.5px solid #1B2A4A":"2.5px solid transparent"}}>
+              <span style={{fontSize:20}}>{t.icon}</span>
+              <span style={{fontSize:11,fontWeight:700}}>{t.label}</span>
             </button>
           ))}
         </div>
