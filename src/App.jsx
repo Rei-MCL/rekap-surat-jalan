@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwPl1aBQFzbnYjh7uVpcjZ8Y6-qh5aCVjoTVXJ2jaryTyx3g_pCckdE8VYFJuaoh_b2Bw/exec";
 
@@ -215,6 +215,50 @@ function LoginScreen({userList,onLogin,isOnline}){
   );
 }
 
+// ── Input jam format 24 jam (ketik langsung, misal 13:30) ────
+function TimeInput24({value,onChange,placeholder="HH:MM (24 jam)"}){
+  const handleChange=(e)=>{
+    let raw=e.target.value.replace(/[^0-9]/g,"");
+    if(raw.length>4)raw=raw.slice(0,4);
+    // Auto-sisipkan titik dua setelah 2 digit
+    const fmt=raw.length>=3 ? raw.slice(0,2)+":"+raw.slice(2) : raw;
+    onChange(fmt);
+  };
+  const handleBlur=()=>{
+    if(!value)return;
+    // Validasi & format ulang saat selesai input
+    const clean=value.replace(/[^0-9:]/g,"");
+    const parts=clean.split(":");
+    if(parts.length===2){
+      const h=Math.min(23,parseInt(parts[0])||0);
+      const m=Math.min(59,parseInt(parts[1])||0);
+      onChange(String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"));
+    }
+  };
+  return(
+    <div style={{position:"relative"}}>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder={placeholder}
+        maxLength={5}
+        style={{...IS,fontSize:16,fontWeight:700,
+          color:value?"#1B2A4A":"#94a3b8",
+          letterSpacing:value?2:0}}
+      />
+      {value&&(
+        <span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
+          fontSize:11,color:"#94a3b8",fontWeight:600}}>
+          {parseInt(value)<12?"pagi":parseInt(value)<17?"siang":parseInt(value)<20?"sore":"malam"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════
 // DRIVER VIEW — dengan offline queue
 // ══════════════════════════════════════════════════════════════
@@ -228,20 +272,36 @@ function DriverView({assDrivers,driverName}){
     [error,setErr]=useState({}),[dupWarn,setDupWarn]=useState("");
   const[isOnline,setOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   const[queueLen,setQLen]=useState(()=>getQueue().length);
+  const[syncing,setSyncing]=useState(false);
 
-  const syncQueue=useCallback(async()=>{
-    const q=getQueue(); if(!q.length)return;
+  // ── Kirim antrian offline ke server ──────────────────────
+  const syncQueue=async()=>{
+    const q=getQueue();
+    if(!q.length)return;
+    setSyncing(true);
     const rem=[];
-    for(const item of q){try{await apiGet(item);}catch{rem.push(item);}}
-    saveQueue(rem); setQLen(rem.length);
-  },[]);
+    for(const item of q){
+      try{await apiGet(item);}
+      catch{rem.push(item);}
+    }
+    saveQueue(rem);
+    setQLen(rem.length);
+    setSyncing(false);
+  };
 
   useEffect(()=>{
+    // Sync otomatis saat app dibuka (kalau ada antrian)
+    if(navigator.onLine){syncQueue();}
+
     const onOn=()=>{setOnline(true);syncQueue();};
     const onOff=()=>setOnline(false);
-    window.addEventListener("online",onOn); window.addEventListener("offline",onOff);
-    return()=>{window.removeEventListener("online",onOn);window.removeEventListener("offline",onOff);};
-  },[syncQueue]);
+    window.addEventListener("online",onOn);
+    window.addEventListener("offline",onOff);
+    return()=>{
+      window.removeEventListener("online",onOn);
+      window.removeEventListener("offline",onOff);
+    };
+  },[]);
 
   const today=new Date().toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"});
   const preview=getSJPreview(nomorSJ);
@@ -296,7 +356,18 @@ function DriverView({assDrivers,driverName}){
     <div style={{padding:20,paddingBottom:40}}>
       {/* Offline / queue indicator */}
       {!isOnline&&<div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📵</span><div><p style={{margin:0,fontWeight:700,color:"#92400e",fontSize:13}}>Mode Offline</p><p style={{margin:0,fontSize:11,color:"#b45309"}}>SJ akan tersimpan & dikirim otomatis saat online</p></div></div>}
-      {isOnline&&queueLen>0&&<div style={{background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>🔄</span><p style={{margin:0,fontWeight:700,color:"#1e40af",fontSize:13}}>{queueLen} SJ offline sedang dikirim...</p></div>}
+      {isOnline&&queueLen>0&&(
+        <div style={{background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:10,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:18}}>{syncing?"⏳":"📤"}</span>
+            <div>
+              <p style={{margin:0,fontWeight:700,color:"#1e40af",fontSize:13}}>{syncing?"Mengirim antrian...":queueLen+" SJ menunggu dikirim"}</p>
+              <p style={{margin:0,fontSize:11,color:"#3b82f6"}}>{syncing?"Harap tunggu":"Akan dikirim otomatis"}</p>
+            </div>
+          </div>
+          {!syncing&&<button onClick={syncQueue} style={{background:"#1d4ed8",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Kirim</button>}
+        </div>
+      )}
 
       <div style={{marginBottom:20}}>
         <p style={{color:"#64748b",fontSize:13,margin:0}}>{today}</p>
@@ -326,8 +397,12 @@ function DriverView({assDrivers,driverName}){
         <Field label="KM Tiba" err={error.km2}><input type="text" inputMode="numeric" pattern="[0-9]*" value={km2} placeholder="12650" onChange={e=>{setKm2(e.target.value.replace(/[^0-9]/g,""));setErr(p=>({...p,km2:""}));}} style={{...IS,fontSize:15,fontWeight:700,border:`1.5px solid ${error.km2?"#f87171":"#cbd5e1"}`}}/></Field>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:durPrev?6:14}}>
-        <Field label="🕐 Jam Tiba di Lokasi"><input type="time" value={jamTiba} onChange={e=>setJT(e.target.value)} style={{...IS,fontSize:15,fontWeight:700,color:jamTiba?"#1B2A4A":"#94a3b8"}}/></Field>
-        <Field label="🏁 Jam Selesai"><input type="time" value={jamSelesai} onChange={e=>setJS(e.target.value)} style={{...IS,fontSize:15,fontWeight:700,color:jamSelesai?"#1B2A4A":"#94a3b8"}}/></Field>
+        <Field label="🕐 Jam Tiba di Lokasi" hint="Format 24 jam · contoh: 13:30">
+          <TimeInput24 value={jamTiba} onChange={setJT}/>
+        </Field>
+        <Field label="🏁 Jam Selesai" hint="Format 24 jam · contoh: 14:45">
+          <TimeInput24 value={jamSelesai} onChange={setJS}/>
+        </Field>
       </div>
       {durPrev&&<p style={{color:"#16a34a",fontSize:12,fontWeight:700,marginBottom:14}}>⏱ Durasi pembongkaran: {durPrev}</p>}
 
@@ -407,8 +482,8 @@ function AdminView(){
               <StatusSelector value={editStat} onChange={setES}/>
               <div style={{marginTop:10,marginBottom:8}}><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 KM Tiba</label><input type="text" inputMode="numeric" value={editKm2} placeholder="KM tiba" onChange={e=>setEK(e.target.value.replace(/[^0-9]/g,""))} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🕐 Jam Tiba</label><input type="time" value={editJT} onChange={e=>setEJT(e.target.value)} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
-                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 Jam Selesai</label><input type="time" value={editJS} onChange={e=>setEJS(e.target.value)} style={{...IS,fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
+                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🕐 Jam Tiba</label><TimeInput24 value={editJT} onChange={setEJT} placeholder="HH:MM"/></div>
+                <div><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>🏁 Jam Selesai</label><TimeInput24 value={editJS} onChange={setEJS} placeholder="HH:MM"/></div>
               </div>
               <div style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Catatan</label><textarea value={editCat} onChange={e=>setEC(e.target.value)} rows={2} style={{...IS,resize:"none",fontSize:14,border:"1.5px solid #cbd5e1"}}/></div>
               <div style={{display:"flex",gap:8}}>
