@@ -116,7 +116,7 @@ function LoginScreen({userList,onLogin}){
       <div style={{background:"linear-gradient(135deg,#1B2A4A 0%,#2d4a7a 100%)",padding:"48px 24px 40px",textAlign:"center",color:"#fff"}}>
         <div style={{fontSize:52,marginBottom:12}}>🚚</div>
         <h1 style={{margin:0,fontSize:22,fontWeight:900}}>Rekap Surat Jalan</h1>
-        <p style={{margin:"6px 0 0",fontSize:13,color:"#93c5fd"}}>Sistem Monitoring Pengiriman Maxcell</p>
+        <p style={{margin:"6px 0 0",fontSize:13,color:"#93c5fd"}}>Sistem Monitoring Pengiriman Maxcell Kolaka</p>
       </div>
       <div style={{flex:1,padding:24}}>
         <p style={{textAlign:"center",color:"#64748b",fontSize:13,marginBottom:20,fontWeight:600}}>Masuk dengan akun Anda</p>
@@ -136,10 +136,9 @@ function LoginScreen({userList,onLogin}){
         </Field>
         {username&&<p style={{fontSize:12,color:RC[role],fontWeight:700,marginBottom:14,background:`${RC[role]}18`,padding:"6px 12px",borderRadius:8}}>{RL[role]} — {username}</p>}
         <button onClick={handleLogin} disabled={loading} style={{width:"100%",padding:"14px",background:loading?"#94a3b8":"linear-gradient(135deg,#1B2A4A,#2d4a7a)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:loading?"default":"pointer",boxShadow:"0 4px 12px rgba(27,42,74,0.3)"}}>{loading?"Memverifikasi...":"Masuk"}</button>
-        <div style={{marginTop:20,background:"#f1f5f9",borderRadius:10,padding:"12px 14px"}}>
-          <p style={{margin:0,fontSize:11,color:"#64748b",fontWeight:700}}>Password default:</p>
-          <p style={{margin:"4px 0 0",fontSize:11,color:"#94a3b8"}}>Driver: [namadepan]123 &nbsp;|&nbsp; Admin: [nama]123 &nbsp;|&nbsp; Owner: owner2026</p>
-        </div>
+        <p style={{textAlign:"center",color:"#cbd5e1",fontSize:11,marginTop:32,letterSpacing:0.5}}>
+          © Reinhard J.C
+        </p>
       </div>
     </div>
   );
